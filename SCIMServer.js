@@ -16,8 +16,8 @@
 let express = require('express');
 let app = express();
 let bodyParser = require('body-parser');
-// Use the mock database instead of the real one
-let db = require('./core/MockDatabase');
+// Use the file-based database
+let db = require('./core/FileDatabase');
 let out = require('./core/Logs');
 let cUsers = require('./components/Users');
 let cGroups = require('./components/Groups');
@@ -108,11 +108,11 @@ app.get('/scim/v2', function (req, res) {
     res.send('SCIM');
 });
 
-let server = app.listen(port, function () {
+let server = app.listen(port, async function () {
     out.log("INFO", "ServerStartup", "Listening on port " + port);
 
-    // Initialize the mock database
-    db.dbInit();
+    // Initialize the file database
+    await db.dbInit();
 });
 
 // Export for testing

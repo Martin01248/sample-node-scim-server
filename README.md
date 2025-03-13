@@ -219,3 +219,39 @@ The tests verify:
 - User deactivation behavior
 - Group changes (adding/removing users)
 - Deletion of users and groups with proper cleanup
+
+# Storage Options
+
+## File-Based Storage
+The server now uses a file-based JSON storage system by default. This approach:
+- Stores all data in a `data/db.json` file
+- Persists data between server restarts locally
+- Automatically initializes with sample users and groups if no data file exists
+- Provides atomic file operations for data consistency
+
+### Local Development
+For local development and testing:
+- Data is stored in the `data/db.json` file
+- Changes persist between server restarts
+- File is automatically created with sample data on first run
+
+### Heroku Deployment
+When deploying to Heroku, be aware that:
+- The filesystem is ephemeral - files are not persisted between dyno restarts
+- Each dyno restart will reinitialize the database with sample data
+- This is suitable for demo/PoC purposes
+- For production use, consider:
+  1. Using a proper database service
+  2. Using Heroku's config vars to store small amounts of data
+  3. Using an external storage service
+
+To use config vars for persistence on Heroku:
+```bash
+# Save current data to config var
+heroku config:set SCIM_DB="$(cat data/db.json)"
+
+# Update code to load from config var if available
+if (process.env.SCIM_DB) {
+  this.data = JSON.parse(process.env.SCIM_DB);
+}
+```

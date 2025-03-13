@@ -1,6 +1,6 @@
 let url = require('url');
 let scimCore = require('../core/SCIMCore');
-let db = require('../core/MockDatabase');
+let db = require('../core/FileDatabase');
 let user = require('../models/User');
 let out = require('../core/Logs');
 

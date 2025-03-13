@@ -2,7 +2,7 @@
   "name": "okta-scim-server",
   "version": "2.0.0",
   "description": "Sample SCIM server written in Node.js. It can be used with SCIM app in Okta for getting SCIM messages related to user provisioning. It supports following Users endpoints",
-  "main": "node_scim_server.js",
+  "main": "SCIMServer.js",
   "scripts": {
     "test": "mocha tests/**/*.test.js",
     "start": "node SCIMServer.js"
@@ -18,12 +18,10 @@
   },
   "homepage": "https://github.com/SohaibAjmal/Okta-Scim-Server#readme",
   "dependencies": {
-    "body-parser": "^1.18.2",
-    "express": "^4.16.2",
-    "fs": "0.0.1-security",
-    "moment": "^2.20.1",
-    "url": "^0.11.0",
-    "uuid": "^3.2.1"
+    "body-parser": "^1.20.2",
+    "express": "^4.18.2",
+    "moment": "^2.30.1",
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
     "chai": "^4.3.7",
@@ -31,10 +29,10 @@
     "supertest": "^6.3.3"
   },
   "engines": {
-    "node": ">=8.9.4"
+    "node": ">=18.0.0"
   },
   "directories": {
     "test": "tests"
   },
-  "keywords": []
+  "keywords": ["scim", "okta", "user-provisioning"]
 }
