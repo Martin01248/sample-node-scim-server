@@ -176,3 +176,46 @@ __IMPORTANT: If you change the body type to JSON, Postman will reset the `Conten
   }]
 }
 ```
+
+# Using In-Memory Database for PoC Testing
+
+This project now supports an in-memory mock database for Proof of Concept (PoC) testing with Entra ID (formerly Azure AD) without needing to connect to a real database. 
+
+## How It Works
+
+The mock database:
+- Initializes with sample users and groups in memory
+- Persists data only for the lifetime of the server process
+- Provides all SCIM endpoints with valid data for testing
+- Automatically manages group memberships and user relationships
+
+## Features
+
+- Pre-populated with two sample users and two groups
+- Full CRUD operations for users and groups
+- Support for group membership operations
+- Proper handling of user/group deletion with relationship cleanup
+
+## Using the Mock Database
+
+The application now uses the in-memory database by default. No configuration is required to use it.
+
+If you wish to switch back to the SQLite database:
+1. Edit `SCIMServer.js` to replace `require('./core/MockDatabase')` with `require('./core/Database')`
+2. Make the same change in the components files (`components/Users.js` and `components/Groups.js`)
+3. Update `core/SCIMCore.js` to use the original Database module
+
+## Testing
+
+Run the tests to ensure the SCIM endpoints work correctly with the mock database:
+
+```
+npm test
+```
+
+The tests verify:
+- All CRUD operations for users and groups
+- Group membership operations
+- User deactivation behavior
+- Group changes (adding/removing users)
+- Deletion of users and groups with proper cleanup

@@ -13,7 +13,7 @@
  *  limitations under the License.
  */
 
-let db = require('./Database');
+let db = require('./MockDatabase');
 
 class SCIMCore {
     static createSCIMUserList(rows, startIndex, count, reqUrl) {

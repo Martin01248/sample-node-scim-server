@@ -16,7 +16,8 @@
 let express = require('express');
 let app = express();
 let bodyParser = require('body-parser');
-let db = require('./core/Database');
+// Use the mock database instead of the real one
+let db = require('./core/MockDatabase');
 let out = require('./core/Logs');
 let cUsers = require('./components/Users');
 let cGroups = require('./components/Groups');
@@ -58,6 +59,12 @@ app.patch('/scim/v2/Users/:userId', cUsers.patchUser);
 app.put('/scim/v2/Users/:userId', cUsers.updateUser);
 
 /**
+ * DELETE {{baseUrl}}/scim/v2/Users/{{userId}}
+ * Delete a user
+ */
+app.delete('/scim/v2/Users/:userId', cUsers.deleteUser);
+
+/**
  * GET {{baseUrl}}/scim/v2/Groups
  * List users with or without a filter
  */
@@ -88,6 +95,12 @@ app.patch('/scim/v2/Groups/:groupId', cGroups.patchGroup);
 app.put('/scim/v2/Groups/:groupId', cGroups.updateGroup);
 
 /**
+ * DELETE {{baseUrl}}/scim/v2/Groups/{{groupId}}
+ * Delete a group
+ */
+app.delete('/scim/v2/Groups/:groupId', cGroups.deleteGroup);
+
+/**
  * GET {{baseUrl}}/scim/v2
  * Default SCIM endpoint
  */
@@ -98,5 +111,9 @@ app.get('/scim/v2', function (req, res) {
 let server = app.listen(port, function () {
     out.log("INFO", "ServerStartup", "Listening on port " + port);
 
+    // Initialize the mock database
     db.dbInit();
 });
+
+// Export for testing
+module.exports = app;

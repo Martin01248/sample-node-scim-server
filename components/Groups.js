@@ -1,6 +1,6 @@
 let url = require('url');
 let scimCore = require('../core/SCIMCore');
-let db = require('../core/Database');
+let db = require('../core/MockDatabase');
 let group = require('../models/Group');
 let out = require('../core/Logs');
 
@@ -213,6 +213,31 @@ class Groups {
 
                 res.end(jsonResult);
             });
+        });
+    }
+
+    static deleteGroup(req, res) {
+        out.log("INFO", "Groups.deleteGroup", "Got request: " + req.url);
+
+        let groupId = req.params.groupId;
+
+        db.deleteGroup(groupId, function(result) {
+            if (result && result["status"] !== undefined) {
+                if (result["status"] === "400") {
+                    res.writeHead(400, {"Content-Type": "text/plain"});
+                } else if (result["status"] === "404") {
+                    res.writeHead(404, {"Content-Type": "text/plain"});
+                }
+
+                let jsonResult = JSON.stringify(result);
+                out.logToFile(jsonResult);
+                out.log("ERROR", "Groups.deleteGroup", "Encountered error " + result["status"] + ": " + result["detail"]);
+                
+                res.end(jsonResult);
+            } else {
+                res.writeHead(204); // No content response for successful deletion
+                res.end();
+            }
         });
     }
 }
