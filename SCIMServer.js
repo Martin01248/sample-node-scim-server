@@ -17,7 +17,7 @@ let express = require('express');
 let app = express();
 let bodyParser = require('body-parser');
 // Use the file-based database
-let db = require('./core/FileDatabase');
+let db = require('./core/MockDatabase');
 let out = require('./core/Logs');
 let cUsers = require('./components/Users');
 let cGroups = require('./components/Groups');

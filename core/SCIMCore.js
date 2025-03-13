@@ -13,7 +13,8 @@
  *  limitations under the License.
  */
 
-let db = require('./FileDatabase');
+let uuid = require('uuid');
+let db = require('./MockDatabase');
 
 class SCIMCore {
     static createSCIMUserList(rows, startIndex, count, reqUrl) {

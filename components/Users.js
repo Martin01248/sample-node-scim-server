@@ -1,6 +1,6 @@
 let url = require('url');
 let scimCore = require('../core/SCIMCore');
-let db = require('../core/FileDatabase');
+let db = require('../core/MockDatabase');
 let user = require('../models/User');
 let out = require('../core/Logs');
 
@@ -102,6 +102,7 @@ class Users {
 
             let userModel = user.parseFromSCIMResource(userJsonData);
 
+            out.log("INFO", "Users.createUser", "Creating user: " + JSON.stringify(userModel));
             db.createUser(userModel, reqUrl, function (result) {
                 if (result["status"] !== undefined) {
                     if (result["status"] === "400") {
@@ -194,7 +195,7 @@ class Users {
             out.logToFile(requestBody);
 
             let userModel = user.parseFromSCIMResource(userJsonData);
-
+            out.log("INFO", "Users.updateUser", "Updating user: " + JSON.stringify(userModel));
             db.updateUser(userModel, userId, reqUrl, function (result) {
                 if (result["status"] !== undefined) {
                     if (result["status"] === "400") {

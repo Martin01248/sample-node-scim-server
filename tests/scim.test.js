@@ -1,7 +1,9 @@
 const request = require('supertest');
 const { expect } = require('chai');
 const app = require('../SCIMServer');
-const db = require('../core/FileDatabase');
+const db = require('../core/MockDatabase');
+const chai = require('chai');
+const chaiHttp = require('chai-http');
 
 describe('SCIM API Tests', () => {
     before(async () => {
