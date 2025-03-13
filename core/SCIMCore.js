@@ -140,12 +140,41 @@ class SCIMCore {
     static createSCIMError(errorMessage, statusCode) {
         let scimError = {
             "schemas": ["urn:ietf:params:scim:api:messages:2.0:Error"],
+            "id": uuid.v4(),
+            "status": null,
+            "scimType": null,
             "detail": null,
-            "status": null
+            "meta": {
+                "resourceType": "Error",
+                "created": new Date().toISOString()
+            }
         };
 
         scimError["detail"] = errorMessage;
         scimError["status"] = statusCode;
+        
+        switch(statusCode) {
+            case "400":
+                scimError["scimType"] = "invalidSyntax";
+                break;
+            case "401":
+                scimError["scimType"] = "unauthorized";
+                break;
+            case "403":
+                scimError["scimType"] = "forbidden";
+                break;
+            case "404":
+                scimError["scimType"] = "notFound";
+                break;
+            case "409":
+                scimError["scimType"] = "uniqueness";
+                break;
+            case "500":
+                scimError["scimType"] = "serverError";
+                break;
+            default:
+                scimError["scimType"] = "invalidValue";
+        }
 
         return scimError;
     }
