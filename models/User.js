@@ -25,34 +25,48 @@ class User  {
             "groups": []
         };
 
-        user["active"] = userJsonData["active"];
-        user["userName"] = userJsonData["userName"];
-        user["givenName"] = userJsonData["name"]["givenName"];
-        user["middleName"] = userJsonData["name"]["middleName"];
-        user["familyName"] = userJsonData["name"]["familyName"];
-        user["email"] = userJsonData["emails"][0]["value"];
+        // Safely access properties with fallbacks to default values
+        user["active"] = userJsonData["active"] !== undefined ? userJsonData["active"] : false;
+        user["userName"] = userJsonData["userName"] || "";
+        
+        // Safely access nested name properties
+        const name = userJsonData["name"] || {};
+        user["givenName"] = name["givenName"] || "";
+        user["middleName"] = name["middleName"] || "";
+        user["familyName"] = name["familyName"] || "";
+        
+        // Safely access email
+        const emails = userJsonData["emails"] || [];
+        user["email"] = emails.length > 0 && emails[0]["value"] ? emails[0]["value"] : "";
 
+        // Safely handle groups
         let groups = [];
-
-        for (let i = 0; i < userJsonData["groups"].length; i++) {
-            groups.push(this.parseGroups(userJsonData["groups"][i]));
+        if (userJsonData["groups"] && Array.isArray(userJsonData["groups"])) {
+            for (let i = 0; i < userJsonData["groups"].length; i++) {
+                if (userJsonData["groups"][i]) {
+                    groups.push(this.parseGroups(userJsonData["groups"][i]));
+                }
+            }
         }
-
         user["groups"] = groups;
 
         return user;
     }
 
     static parseGroups(userGroupJsonData) {
+        if (!userGroupJsonData) {
+            return { value: null, ref: null, display: null };
+        }
+        
         let group = {
             "value": null,
             "ref": null,
             "display": null
         };
 
-        group["value"] = userGroupJsonData["value"];
-        group["ref"] = userGroupJsonData["$ref"];
-        group["display"] = userGroupJsonData["display"];
+        group["value"] = userGroupJsonData["value"] || null;
+        group["ref"] = userGroupJsonData["$ref"] || null;
+        group["display"] = userGroupJsonData["display"] || null;
 
         return group;
     }
@@ -64,9 +78,9 @@ class User  {
             "display": null
         };
 
-        group["value"] = groupId;
-        group["$ref"] = "../Groups/" + groupId;
-        group["display"] = displayName;
+        group["value"] = groupId || null;
+        group["$ref"] = groupId ? "../Groups/" + groupId : null;
+        group["display"] = displayName || null;
 
         return group;
     }

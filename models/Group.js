@@ -15,19 +15,32 @@
 
 class Group  {
     static parseFromSCIMResource(groupJsonData) {
+        if (!groupJsonData) {
+            return {
+                "id": null,
+                "displayName": null,
+                "members": []
+            };
+        }
+        
         let group = {
             "id": null,
             "displayName": null,
             "members": []
         };
 
-        group["id"] = groupJsonData["id"];
-        group["displayName"] = groupJsonData["displayName"];
+        group["id"] = groupJsonData["id"] || null;
+        group["displayName"] = groupJsonData["displayName"] || null;
 
         let members = [];
 
-        for (let i = 0; i < groupJsonData["members"].length; i++) {
-            members.push(this.parseMemberships(groupJsonData["members"][i]));
+        // Safely handle members array
+        if (groupJsonData["members"] && Array.isArray(groupJsonData["members"])) {
+            for (let i = 0; i < groupJsonData["members"].length; i++) {
+                if (groupJsonData["members"][i]) {
+                    members.push(this.parseMemberships(groupJsonData["members"][i]));
+                }
+            }
         }
 
         group["members"] = members;
@@ -36,15 +49,19 @@ class Group  {
     }
 
     static parseMemberships(groupMembersJsonData) {
+        if (!groupMembersJsonData) {
+            return { value: null, ref: null, display: null };
+        }
+        
         let member = {
             "value": null,
             "ref": null,
             "display": null
         };
 
-        member["value"] = groupMembersJsonData["value"];
-        member["ref"] = groupMembersJsonData["$ref"];
-        member["display"] = groupMembersJsonData["display"];
+        member["value"] = groupMembersJsonData["value"] || null;
+        member["ref"] = groupMembersJsonData["$ref"] || null;
+        member["display"] = groupMembersJsonData["display"] || null;
 
         return member;
     }
@@ -56,9 +73,9 @@ class Group  {
             "display": null
         };
 
-        user["value"] = userId;
-        user["$ref"] = "../Users/" + userId;
-        user["display"] = displayName;
+        user["value"] = userId || null;
+        user["$ref"] = userId ? "../Users/" + userId : null;
+        user["display"] = displayName || null;
 
         return user;
     }

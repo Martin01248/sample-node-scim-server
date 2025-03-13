@@ -23,14 +23,14 @@ class Groups {
             db.getFilteredGroups(attributeName, attributeValue, startIndex, count, reqUrl, function (result) {
                 if (result["status"] !== undefined) {
                     if (result["status"] === "400") {
-                        res.writeHead(400, {"Content-Type": "text/plain"});
+                        res.writeHead(400, {"Content-Type": "application/scim+json"});
                     } else if (result["status"] === "409") {
-                        res.writeHead(409, {"Content-Type": "text/plain"});
+                        res.writeHead(409, {"Content-Type": "application/scim+json"});
                     }
 
                     out.log("ERROR", "Groups.listGroups", "Encountered error " + result["status"] + ": " + result["detail"]);
                 } else {
-                    res.writeHead(200, {"Content-Type": "text/json"});
+                    res.writeHead(200, {"Content-Type": "application/scim+json"});
                 }
 
                 let jsonResult = JSON.stringify(result);
@@ -42,14 +42,14 @@ class Groups {
             db.getAllGroups(startIndex, count, reqUrl, function (result) {
                 if (result["status"] !== undefined) {
                     if (result["status"] === "400") {
-                        res.writeHead(400, {"Content-Type": "text/plain"});
+                        res.writeHead(400, {"Content-Type": "application/scim+json"});
                     } else if (result["status"] === "409") {
-                        res.writeHead(409, {"Content-Type": "text/plain"});
+                        res.writeHead(409, {"Content-Type": "application/scim+json"});
                     }
 
                     out.log("ERROR", "Groups.listGroups", "Encountered error " + result["status"] + ": " + result["detail"]);
                 } else {
-                    res.writeHead(200, {"Content-Type": "text/json"});
+                    res.writeHead(200, {"Content-Type": "application/scim+json"});
                 }
 
                 let jsonResult = JSON.stringify(result);
@@ -70,14 +70,14 @@ class Groups {
         db.getGroup(groupId, reqUrl, function (result) {
             if (result["status"] !== undefined) {
                 if (result["status"] === "400") {
-                    res.writeHead(400, {"Content-Type": "text/plain"});
+                    res.writeHead(400, {"Content-Type": "application/scim+json"});
                 } else if (result["status"] === "409") {
-                    res.writeHead(409, {"Content-Type": "text/plain"});
+                    res.writeHead(409, {"Content-Type": "application/scim+json"});
                 }
 
                 out.log("ERROR", "Groups.getGroup", "Encountered error " + result["status"] + ": " + result["detail"]);
             } else {
-                res.writeHead(200, {"Content-Type": "text/json"});
+                res.writeHead(200, {"Content-Type": "application/scim+json"});
             }
 
             let jsonResult = JSON.stringify(result);
@@ -95,31 +95,63 @@ class Groups {
         let requestBody = "";
 
         req.on('data', function (data) {
-            requestBody += data;
-            let groupJsonData = JSON.parse(requestBody);
-
-            out.logToFile(requestBody);
-
-            let groupModel = group.parseFromSCIMResource(groupJsonData);
-
-            db.createGroup(groupModel, reqUrl, function (result) {
-                if (result["status"] !== undefined) {
-                    if (result["status"] === "400") {
-                        res.writeHead(400, {"Content-Type": "text/plain"});
-                    } else if (result["status"] === "409") {
-                        res.writeHead(409, {"Content-Type": "text/plain"});
-                    }
-
-                    out.log("ERROR", "Groups.createGroup", "Encountered error " + result["status"] + ": " + result["detail"]);
-                } else {
-                    res.writeHead(201, {"Content-Type": "text/json"});
+            try {
+                requestBody += data;
+                let groupJsonData;
+                
+                try {
+                    groupJsonData = JSON.parse(requestBody);
+                    out.logToFile(requestBody);
+                } catch (jsonError) {
+                    out.log("ERROR", "Groups.createGroup", "Failed to parse request JSON: " + jsonError.message);
+                    res.writeHead(400, {"Content-Type": "application/scim+json"});
+                    let errorResponse = scimCore.createSCIMError("Invalid JSON format", "400");
+                    res.end(JSON.stringify(errorResponse));
+                    return;
                 }
 
-                let jsonResult = JSON.stringify(result);
-                out.logToFile(jsonResult);
+                try {
+                    out.log("INFO", "Groups.createGroup", "Parsing group data");
+                    let groupModel = group.parseFromSCIMResource(groupJsonData);
+                    out.log("INFO", "Groups.createGroup", "Creating group: " + JSON.stringify(groupModel));
+                    
+                    db.createGroup(groupModel, reqUrl, function (result) {
+                        if (result["status"] !== undefined) {
+                            if (result["status"] === "400") {
+                                res.writeHead(400, {"Content-Type": "application/scim+json"});
+                            } else if (result["status"] === "409") {
+                                res.writeHead(409, {"Content-Type": "application/scim+json"});
+                            }
 
-                res.end(jsonResult);
-            });
+                            out.log("ERROR", "Groups.createGroup", "Encountered error " + result["status"] + ": " + result["detail"]);
+                        } else {
+                            res.writeHead(201, {"Content-Type": "application/scim+json"});
+                        }
+
+                        let jsonResult = JSON.stringify(result);
+                        out.logToFile(jsonResult);
+
+                        res.end(jsonResult);
+                    });
+                } catch (parseError) {
+                    out.log("ERROR", "Groups.createGroup", "Failed to process group data: " + parseError.message);
+                    res.writeHead(400, {"Content-Type": "application/scim+json"});
+                    let errorResponse = scimCore.createSCIMError("Invalid SCIM group data: " + parseError.message, "400");
+                    res.end(JSON.stringify(errorResponse));
+                }
+            } catch (error) {
+                out.log("ERROR", "Groups.createGroup", "Unexpected error: " + error.message);
+                res.writeHead(500, {"Content-Type": "application/scim+json"});
+                let errorResponse = scimCore.createSCIMError("Internal server error", "500");
+                res.end(JSON.stringify(errorResponse));
+            }
+        });
+
+        req.on('error', function(error) {
+            out.log("ERROR", "Groups.createGroup", "Request error: " + error.message);
+            res.writeHead(500, {"Content-Type": "application/scim+json"});
+            let errorResponse = scimCore.createSCIMError("Request handling error", "500");
+            res.end(JSON.stringify(errorResponse));
         });
     }
 
@@ -134,46 +166,106 @@ class Groups {
         let requestBody = "";
 
         req.on("data", function (data) {
-            requestBody += data;
-            let jsonReqBody = JSON.parse(requestBody);
+            try {
+                requestBody += data;
+                let jsonReqBody;
+                
+                try {
+                    jsonReqBody = JSON.parse(requestBody);
+                    out.logToFile(requestBody);
+                } catch (jsonError) {
+                    out.log("ERROR", "Groups.patchGroup", "Failed to parse request JSON: " + jsonError.message);
+                    res.writeHead(400, {"Content-Type": "application/scim+json"});
+                    let errorResponse = scimCore.createSCIMError("Invalid JSON format", "400");
+                    res.end(JSON.stringify(errorResponse));
+                    return;
+                }
+                
+                if (!jsonReqBody.Operations || !Array.isArray(jsonReqBody.Operations) || jsonReqBody.Operations.length === 0) {
+                    out.log("ERROR", "Groups.patchGroup", "Missing or invalid Operations array");
+                    res.writeHead(400, {"Content-Type": "application/scim+json"});
+                    let errorResponse = scimCore.createSCIMError("Missing or invalid Operations array", "400");
+                    res.end(JSON.stringify(errorResponse));
+                    return;
+                }
 
-            out.logToFile(requestBody);
+                const operation = jsonReqBody.Operations[0].op ? jsonReqBody.Operations[0].op.toLowerCase() : '';
+                const value = jsonReqBody.Operations[0].value;
+                
+                // Handle different operation types (case-insensitive)
+                if (operation === "replace" || operation === "add") {
+                    if (!value) {
+                        out.log("ERROR", "Groups.patchGroup", "Missing value for operation: " + operation);
+                        res.writeHead(400, {"Content-Type": "application/scim+json"});
+                        let errorResponse = scimCore.createSCIMError("Missing value for operation", "400");
+                        res.end(JSON.stringify(errorResponse));
+                        return;
+                    }
+                    
+                    const attribute = Object.keys(value)[0];
+                    const attributeValue = value[attribute];
+                    
+                    db.patchGroup(attribute, attributeValue, groupId, reqUrl, function (result) {
+                        if (result["status"] !== undefined) {
+                            if (result["status"] === "400") {
+                                res.writeHead(400, {"Content-Type": "application/scim+json"});
+                            } else if (result["status"] === "409") {
+                                res.writeHead(409, {"Content-Type": "application/scim+json"});
+                            } else if (result["status"] === "404") {
+                                res.writeHead(404, {"Content-Type": "application/scim+json"});
+                            }
 
-            let operation = jsonReqBody["Operations"][0]["op"];
-            let value = jsonReqBody["Operations"][0]["value"];
-            let attribute = Object.keys(value)[0];
-            let attributeValue = value[attribute];
-
-            if (operation === "replace") {
-                db.patchGroup(attribute, attributeValue, groupId, reqUrl, function (result) {
-                    if (result["status"] !== undefined) {
-                        if (result["status"] === "400") {
-                            res.writeHead(400, {"Content-Type": "text/plain"});
-                        } else if (result["status"] === "409") {
-                            res.writeHead(409, {"Content-Type": "text/plain"});
+                            out.log("ERROR", "Groups.patchGroup", "Encountered error " + result["status"] + ": " + result["detail"]);
+                        } else {
+                            res.writeHead(200, {"Content-Type": "application/scim+json"});
                         }
 
-                        out.log("ERROR", "Groups.patchGroup", "Encountered error " + result["status"] + ": " + result["detail"]);
-                    } else {
-                        res.writeHead(200, {"Content-Type": "text/json"});
-                    }
+                        let jsonResult = JSON.stringify(result);
+                        out.logToFile(jsonResult);
 
-                    let jsonResult = JSON.stringify(result);
+                        res.end(jsonResult);
+                    });
+                } else if (operation === "remove") {
+                    // Handle remove operation
+                    out.log("WARN", "Groups.patchGroup", "Remove operation not fully implemented");
+                    
+                    // For now, just return success with the current group state
+                    db.getGroup(groupId, reqUrl, function (result) {
+                        if (result["status"] !== undefined) {
+                            res.writeHead(result["status"], {"Content-Type": "application/scim+json"});
+                            out.log("ERROR", "Groups.patchGroup", "Encountered error " + result["status"] + ": " + result["detail"]);
+                        } else {
+                            res.writeHead(200, {"Content-Type": "application/scim+json"});
+                        }
+                        
+                        let jsonResult = JSON.stringify(result);
+                        out.logToFile(jsonResult);
+                        res.end(jsonResult);
+                    });
+                } else {
+                    out.log("WARN", "Groups.patchGroup", "The requested operation, " + operation + ", is not supported!");
+
+                    let scimError = scimCore.createSCIMError("Operation Not Supported", "403");
+                    res.writeHead(403, {"Content-Type": "application/scim+json"});
+
+                    let jsonResult = JSON.stringify(scimError);
                     out.logToFile(jsonResult);
 
                     res.end(jsonResult);
-                });
-            } else {
-                out.log("WARN", "Groups.patchGroup", "The requested operation, " + operation + ", is not supported!");
-
-                let scimError = scimCore.createSCIMError("Operation Not Supported", "403");
-                res.writeHead(403, {"Content-Type": "text/plain"});
-
-                let jsonResult = JSON.stringify(scimError);
-                out.logToFile(jsonResult);
-
-                res.end(jsonResult);
+                }
+            } catch (error) {
+                out.log("ERROR", "Groups.patchGroup", "Unexpected error: " + error.message);
+                res.writeHead(500, {"Content-Type": "application/scim+json"});
+                let errorResponse = scimCore.createSCIMError("Internal server error", "500");
+                res.end(JSON.stringify(errorResponse));
             }
+        });
+        
+        req.on('error', function(error) {
+            out.log("ERROR", "Groups.patchGroup", "Request error: " + error.message);
+            res.writeHead(500, {"Content-Type": "application/scim+json"});
+            let errorResponse = scimCore.createSCIMError("Request handling error", "500");
+            res.end(JSON.stringify(errorResponse));
         });
     }
 
@@ -198,14 +290,14 @@ class Groups {
             db.updateGroup(groupModel, groupId, reqUrl, function (result) {
                 if (result["status"] !== undefined) {
                     if (result["status"] === "400") {
-                        res.writeHead(400, {"Content-Type": "text/plain"});
+                        res.writeHead(400, {"Content-Type": "application/scim+json"});
                     } else if (result["status"] === "409") {
-                        res.writeHead(409, {"Content-Type": "text/plain"});
+                        res.writeHead(409, {"Content-Type": "application/scim+json"});
                     }
 
                     out.log("ERROR", "Groups.updateGroup", "Encountered error " + result["status"] + ": " + result["detail"]);
                 } else {
-                    res.writeHead(200, {"Content-Type": "text/json"});
+                    res.writeHead(200, {"Content-Type": "application/scim+json"});
                 }
 
                 let jsonResult = JSON.stringify(result);
@@ -224,9 +316,9 @@ class Groups {
         db.deleteGroup(groupId, function(result) {
             if (result && result["status"] !== undefined) {
                 if (result["status"] === "400") {
-                    res.writeHead(400, {"Content-Type": "text/plain"});
+                    res.writeHead(400, {"Content-Type": "application/scim+json"});
                 } else if (result["status"] === "404") {
-                    res.writeHead(404, {"Content-Type": "text/plain"});
+                    res.writeHead(404, {"Content-Type": "application/scim+json"});
                 }
 
                 let jsonResult = JSON.stringify(result);
