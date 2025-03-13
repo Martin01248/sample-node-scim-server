@@ -167,16 +167,51 @@ class MockDatabase {
         
         // Add group memberships if specified
         if (userModel.groups && userModel.groups.length > 0) {
+            out.log("DEBUG", "MockDatabase.createUser", "Processing groups: " + JSON.stringify(userModel.groups));
+            
             for (const group of userModel.groups) {
-                this.memberships.push({
-                    id: uuid.v4(),
-                    groupId: group.value,
-                    userId: userId
-                });
+                out.log("DEBUG", "MockDatabase.createUser", "Processing group: " + JSON.stringify(group));
+                
+                // Try to find the group by value (id) first
+                let groupId = group.value;
+                let targetGroup = this.groups.find(g => g.id === groupId);
+                
+                // If not found by ID, try by displayName (Microsoft Entra may send displayName)
+                if (!targetGroup && group.display) {
+                    targetGroup = this.groups.find(g => g.displayName === group.display);
+                    if (targetGroup) {
+                        groupId = targetGroup.id;
+                        out.log("INFO", "MockDatabase.createUser", "Found group by display name: " + group.display);
+                    }
+                }
+                
+                // If still not found and we have display name, create the group
+                if (!targetGroup && group.display) {
+                    groupId = uuid.v4();
+                    out.log("INFO", "MockDatabase.createUser", "Creating new group: " + group.display);
+                    
+                    this.groups.push({
+                        id: groupId,
+                        displayName: group.display
+                    });
+                }
+                
+                // Only add membership if we have a valid groupId
+                if (groupId) {
+                    out.log("INFO", "MockDatabase.createUser", "Adding user to group: " + groupId);
+                    this.memberships.push({
+                        id: uuid.v4(),
+                        groupId: groupId,
+                        userId: userId
+                    });
+                } else {
+                    out.log("WARN", "MockDatabase.createUser", "Cannot add user to group, invalid group reference: " + JSON.stringify(group));
+                }
             }
         }
         
         newUser.groups = this.getGroupsForUser(userId);
+        out.log("DEBUG", "MockDatabase.createUser", "User created with groups: " + JSON.stringify(newUser.groups));
         callback(scimCore.parseSCIMUser(newUser, reqUrl));
     }
 

@@ -101,6 +101,17 @@ class Users {
                 
                 try {
                     userJsonData = JSON.parse(requestBody);
+                    
+                    // Log the full request data for debugging
+                    out.log("DEBUG", "Users.createUser", "Received data: " + JSON.stringify(userJsonData));
+                    
+                    // Specifically log groups data if present
+                    if (userJsonData.groups) {
+                        out.log("DEBUG", "Users.createUser", "Received groups: " + JSON.stringify(userJsonData.groups));
+                    } else {
+                        out.log("WARN", "Users.createUser", "No groups data in request");
+                    }
+                    
                     out.logToFile(requestBody);
                 } catch (jsonError) {
                     out.log("ERROR", "Users.createUser", "Failed to parse request JSON: " + jsonError.message);

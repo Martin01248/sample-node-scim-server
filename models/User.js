@@ -64,9 +64,20 @@ class User  {
             "display": null
         };
 
+        // Microsoft Entra ID might send 'value' for group ID
         group["value"] = userGroupJsonData["value"] || null;
-        group["ref"] = userGroupJsonData["$ref"] || null;
-        group["display"] = userGroupJsonData["display"] || null;
+        
+        // Handle both ref types: $ref (standard) and ref (sometimes used)
+        group["ref"] = userGroupJsonData["$ref"] || userGroupJsonData["ref"] || null;
+        
+        // Handle display field for the group name
+        group["display"] = userGroupJsonData["display"] || userGroupJsonData["displayName"] || null;
+        
+        // Log the parsed group for debugging
+        if (process.env.NODE_ENV !== 'production') {
+            const out = require('../core/Logs');
+            out.log("DEBUG", "User.parseGroups", "Parsed group: " + JSON.stringify(group) + " from " + JSON.stringify(userGroupJsonData));
+        }
 
         return group;
     }

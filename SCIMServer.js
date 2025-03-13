@@ -26,6 +26,24 @@ app.use(express.static('public'));
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 
+// Middleware to log all SCIM requests and responses
+app.use('/scim/v2', (req, res, next) => {
+  const start = Date.now();
+  out.log("INFO", "SCIMServer", `${req.method} ${req.url} received`);
+  
+  // Capture the original res.end to intercept response
+  const originalEnd = res.end;
+  res.end = function(chunk, encoding) {
+    const responseTime = Date.now() - start;
+    out.log("INFO", "SCIMServer", `${req.method} ${req.url} completed in ${responseTime}ms with status ${res.statusCode}`);
+    
+    // Call the original end method
+    return originalEnd.call(this, chunk, encoding);
+  };
+  
+  next();
+});
+
 let port = process.env.PORT || 8081; // Support for Heroku
 
 /**
