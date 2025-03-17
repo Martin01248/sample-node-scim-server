@@ -23,7 +23,7 @@ const mGroupMembership = require('../models/GroupMembership');
 
 // Create a connection pool
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/scimdb',
+    connectionString: process.env.DATABASE_URL || 'postgresql://localhost/scimdb',
     ssl: process.env.NODE_ENV === 'production' 
         ? { 
             rejectUnauthorized: process.env.REJECT_UNAUTHORIZED !== 'false', // Set to false to accept self-signed certificates

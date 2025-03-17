@@ -13,11 +13,11 @@ const out = require('./core/Logs');
 // Create a test function
 async function testConnection() {
     console.log("Testing PostgreSQL connection...");
-    console.log("DATABASE_URL:", process.env.DATABASE_URL || 'not set');
+    console.log("Using database connection from .env file");
     
     // Create postgres connection with same settings as in PostgresDatabase.js
     const pool = new Pool({
-        connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/scimdb',
+        connectionString: process.env.DATABASE_URL || 'postgresql://localhost/scimdb',
         ssl: process.env.NODE_ENV === 'production' 
             ? { 
                 rejectUnauthorized: process.env.REJECT_UNAUTHORIZED !== 'false',
@@ -61,7 +61,7 @@ async function testConnection() {
         console.error("CONNECTION ERROR:");
         console.error(err.message);
         console.error("\nPossible solutions:");
-        console.error("1. Check that your DATABASE_URL is correct in .env file");
+        console.error("1. Check that your database connection string is correct in .env file");
         console.error("2. If using SSL, you may need to set REJECT_UNAUTHORIZED=false for self-signed certificates");
         console.error("3. Verify your database is running and accessible from your current network");
         process.exit(1);

@@ -147,7 +147,7 @@ const port = process.env.PORT || 8080;
         console.error("\x1b[31m%s\x1b[0m", "DATABASE CONNECTION FAILED:");
         console.error("\x1b[31m%s\x1b[0m", err.message);
         console.error("\x1b[31m%s\x1b[0m", "Check your database configuration in .env file");
-        console.error("\x1b[31m%s\x1b[0m", "DATABASE_URL=" + (process.env.DATABASE_URL || "not set"));
+        console.error("\x1b[31m%s\x1b[0m", "For security reasons, connection details are not displayed");
         console.error("\x1b[31m%s\x1b[0m", "Server will now exit.");
         
         // Exit with error code
