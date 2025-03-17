@@ -177,49 +177,6 @@ __IMPORTANT: If you change the body type to JSON, Postman will reset the `Conten
 }
 ```
 
-# Using In-Memory Database for PoC Testing
-
-This project now supports an in-memory mock database for Proof of Concept (PoC) testing with Entra ID (formerly Azure AD) without needing to connect to a real database. 
-
-## How It Works
-
-The mock database:
-- Initializes with sample users and groups in memory
-- Persists data only for the lifetime of the server process
-- Provides all SCIM endpoints with valid data for testing
-- Automatically manages group memberships and user relationships
-
-## Features
-
-- Pre-populated with two sample users and two groups
-- Full CRUD operations for users and groups
-- Support for group membership operations
-- Proper handling of user/group deletion with relationship cleanup
-
-## Using the Mock Database
-
-The application now uses the in-memory database by default. No configuration is required to use it.
-
-If you wish to switch back to the SQLite database:
-1. Edit `SCIMServer.js` to replace `require('./core/MockDatabase')` with `require('./core/Database')`
-2. Make the same change in the components files (`components/Users.js` and `components/Groups.js`)
-3. Update `core/SCIMCore.js` to use the original Database module
-
-## Testing
-
-Run the tests to ensure the SCIM endpoints work correctly with the mock database:
-
-```
-npm test
-```
-
-The tests verify:
-- All CRUD operations for users and groups
-- Group membership operations
-- User deactivation behavior
-- Group changes (adding/removing users)
-- Deletion of users and groups with proper cleanup
-
 # Storage Options
 
 ## PostgreSQL Database
@@ -255,36 +212,156 @@ For Heroku deployment:
 2. The `DATABASE_URL` will be automatically set by Heroku
 3. Deploy your app as usual
 
-## File-Based Storage
-The server now uses a file-based JSON storage system by default. This approach:
-- Stores all data in a `data/db.json` file
-- Persists data between server restarts locally
-- Automatically initializes with sample users and groups if no data file exists
-- Provides atomic file operations for data consistency
+## PostgreSQL Database Connection
+The server now exclusively uses PostgreSQL for data storage:
+- All mock/file-based databases have been removed
+- The server will fail to start if PostgreSQL connection fails
+- SSL certificate validation can be configured for security
 
-### Local Development
-For local development and testing:
-- Data is stored in the `data/db.json` file
-- Changes persist between server restarts
-- File is automatically created with sample data on first run
+### Setting Up PostgreSQL Connection
+1. Configure your connection in the `.env` file:
+   ```
+   DATABASE_URL=postgresql://username:password@hostname:port/database
+   ```
 
-### Heroku Deployment
-When deploying to Heroku, be aware that:
-- The filesystem is ephemeral - files are not persisted between dyno restarts
-- Each dyno restart will reinitialize the database with sample data
-- This is suitable for demo/PoC purposes
-- For production use, consider:
-  1. Using a proper database service
-  2. Using Heroku's config vars to store small amounts of data
-  3. Using an external storage service
+2. If using SSL with self-signed certificates, add:
+   ```
+   REJECT_UNAUTHORIZED=false
+   ```
 
-To use config vars for persistence on Heroku:
+3. If you have a CA certificate, add:
+   ```
+   SSL_CA_CERT=your_certificate_content_here
+   ```
+
+### Testing PostgreSQL Connection
+Before starting the server, you can test your PostgreSQL connection:
+
 ```bash
-# Save current data to config var
-heroku config:set SCIM_DB="$(cat data/db.json)"
-
-# Update code to load from config var if available
-if (process.env.SCIM_DB) {
-  this.data = JSON.parse(process.env.SCIM_DB);
-}
+node testDBConnection.js
 ```
+
+This test script will:
+- Verify connection to the database
+- Test query functionality
+- Check if SCIM tables exist
+- Provide troubleshooting information if connection fails
+
+### Troubleshooting Database Connection
+If you encounter connection issues:
+
+1. **Self-signed Certificate Errors**:
+   - Set `REJECT_UNAUTHORIZED=false` in your `.env` file
+   - This is common when using cloud PostgreSQL instances
+
+2. **Connection Refused**:
+   - Check if your database is running
+   - Verify network access and firewall settings
+
+3. **Authentication Failed**:
+   - Verify username and password in your DATABASE_URL
+   - Check that the user has proper permissions
+
+4. **Database Name Issues**:
+   - Ensure the database exists on the server
+   - Create it manually if needed: `CREATE DATABASE yourdbname;`
+
+# Deployment
+
+## Heroku Deployment with PostgreSQL
+
+### Setting Up Heroku
+1. Install the Heroku CLI: https://devcenter.heroku.com/articles/heroku-cli
+2. Create a new Heroku app:
+   ```bash
+   heroku create your-app-name
+   ```
+3. Add PostgreSQL add-on:
+   ```bash
+   heroku addons:create heroku-postgresql:hobby-dev
+   ```
+4. Configure SSL for the database (for self-signed certificates):
+   ```bash
+   heroku config:set REJECT_UNAUTHORIZED=false
+   heroku config:set NODE_ENV=production
+   ```
+
+### Deploying to Heroku
+1. Push your code to Heroku:
+   ```bash
+   git push heroku master
+   ```
+2. The database schema will be automatically created on first startup
+
+### Monitoring the Database
+1. View database connection info:
+   ```bash
+   heroku pg:info
+   ```
+2. Access the PostgreSQL database directly:
+   ```bash
+   heroku pg:psql
+   ```
+3. View the tables:
+   ```sql
+   \dt
+   ```
+4. Check users in the database:
+   ```sql
+   SELECT * FROM "Users";
+   ```
+5. Check groups in the database:
+   ```sql
+   SELECT * FROM "Groups";
+   ```
+
+### Troubleshooting Heroku Deployment
+1. View logs to diagnose issues:
+   ```bash
+   heroku logs --tail
+   ```
+2. Restart the app if needed:
+   ```bash
+   heroku restart
+   ```
+3. Run database connection test:
+   ```bash
+   heroku run node testDBConnection.js
+   ```
+
+## Local Development
+For local development:
+1. Install PostgreSQL locally
+2. Create a database: `createdb scimdb`
+3. Configure your `.env` file:
+   ```
+   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/scimdb
+   NODE_ENV=development
+   ```
+4. Run the server:
+   ```bash
+   node SCIMServer.js
+   ```
+
+# Important Note for Deployment
+
+Before deploying to production, make sure to update your `.env` file with the correct PostgreSQL connection string:
+
+```
+# For cloud database (like Heroku or OVH)
+DATABASE_URL=postgres://username:password@hostname:port/database?sslmode=require
+REJECT_UNAUTHORIZED=false  # Only if using self-signed certificates
+NODE_ENV=production
+```
+
+If your deployment is failing with database connection errors, run the database test:
+
+```bash
+# Locally
+npm run test:db
+
+# On Heroku
+heroku run npm run test:db
+```
+
+This will provide detailed information about your database connection.

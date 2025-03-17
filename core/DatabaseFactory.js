@@ -18,30 +18,23 @@ let databaseImplementation = null;
 
 class DatabaseFactory {
     /**
-     * Initialize the appropriate database implementation
-     * Will try PostgreSQL first, then fall back to MockDatabase
+     * Initialize PostgreSQL database only - no fallback
      */
     static async initDatabase() {
+        // Initialize PostgreSQL database only
+        out.log("INFO", "DatabaseFactory", "Initializing PostgreSQL database");
+        const PostgresDatabase = require('./PostgresDatabase');
+        
         try {
-            // First try PostgreSQL
-            out.log("INFO", "DatabaseFactory", "Attempting to initialize PostgreSQL database");
-            const PostgresDatabase = require('./PostgresDatabase');
-            
             // Test connection
             await PostgresDatabase.dbInit();
             
             databaseImplementation = PostgresDatabase;
             out.log("INFO", "DatabaseFactory", "Successfully initialized PostgreSQL database");
         } catch (err) {
-            out.log("WARN", "DatabaseFactory", `PostgreSQL initialization failed: ${err.message}`);
-            out.log("WARN", "DatabaseFactory", "Falling back to MockDatabase");
-            
-            // Fall back to MockDatabase
-            const MockDatabase = require('./MockDatabase');
-            await MockDatabase.dbInit();
-            
-            databaseImplementation = MockDatabase;
-            out.log("INFO", "DatabaseFactory", "Successfully initialized MockDatabase as fallback");
+            out.error("DatabaseFactory", `PostgreSQL initialization failed: ${err.message}`);
+            // No fallback - explicitly throw error
+            throw new Error(`PostgreSQL connection failed: ${err.message}. Please check your database configuration.`);
         }
         
         return databaseImplementation;

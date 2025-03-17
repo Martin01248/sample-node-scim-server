@@ -134,7 +134,7 @@ const port = process.env.PORT || 8080;
 (async function() {
     try {
         // Initialize database using the factory
-        out.log("INFO", "ServerStartup", "Initializing database");
+        out.log("INFO", "ServerStartup", "Initializing PostgreSQL database");
         const db = await dbFactory.initDatabase();
         
         // Start the server
@@ -143,7 +143,14 @@ const port = process.env.PORT || 8080;
             out.log("INFO", "ServerStartup", "Environment: " + (process.env.NODE_ENV || 'development'));
         });
     } catch (err) {
-        out.error("ServerStartup", "Failed to initialize database: " + err.message);
+        out.error("ServerStartup", "FATAL: Failed to initialize database: " + err.message);
+        console.error("\x1b[31m%s\x1b[0m", "DATABASE CONNECTION FAILED:");
+        console.error("\x1b[31m%s\x1b[0m", err.message);
+        console.error("\x1b[31m%s\x1b[0m", "Check your database configuration in .env file");
+        console.error("\x1b[31m%s\x1b[0m", "DATABASE_URL=" + (process.env.DATABASE_URL || "not set"));
+        console.error("\x1b[31m%s\x1b[0m", "Server will now exit.");
+        
+        // Exit with error code
         process.exit(1);
     }
 })();
