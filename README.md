@@ -365,3 +365,36 @@ heroku run npm run test:db
 ```
 
 This will provide detailed information about your database connection.
+
+# Handling Database Permission Issues
+
+If you encounter a "permission denied for schema public" error, your database user lacks permissions to create tables. To resolve this:
+
+## Option 1: Create tables manually
+
+1. Connect to your PostgreSQL database using your provider's SQL interface
+2. Run the SQL script in `database-setup.sql` to create the required tables
+
+```bash
+# If you have psql access, you can run:
+psql -U yourusername -d yourdatabase -f database-setup.sql
+```
+
+Once the tables are created, the application will detect them and won't try to create them again.
+
+## Option 2: Request elevated permissions
+
+Contact your database provider to grant CREATE TABLE permissions to your database user.
+
+## Option 3: Use a different schema
+
+Modify `PostgresDatabase.js` to use a schema where you have permissions:
+
+```javascript
+// Example of using a custom schema
+await client.query(`
+    CREATE TABLE IF NOT EXISTS "your_schema"."Users" (
+        ...
+    )
+`);
+```

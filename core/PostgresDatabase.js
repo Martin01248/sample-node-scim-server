@@ -40,41 +40,87 @@ class PostgresDatabase {
             // Begin transaction
             await client.query('BEGIN');
 
-            // Create Users table if not exists
-            await client.query(`
-                CREATE TABLE IF NOT EXISTS "Users" (
-                    id VARCHAR(255) PRIMARY KEY,
-                    active BOOLEAN,
-                    "userName" VARCHAR(255) UNIQUE,
-                    "givenName" VARCHAR(255),
-                    "middleName" VARCHAR(255),
-                    "familyName" VARCHAR(255),
-                    email VARCHAR(255)
-                )
-            `);
+            // Check database permissions first
+            let canCreateTables = true;
+            try {
+                // Try to create a test table to check permissions
+                await client.query(`
+                    CREATE TABLE IF NOT EXISTS "permission_test" (id VARCHAR(255));
+                    DROP TABLE IF EXISTS "permission_test";
+                `);
+                out.log("INFO", "PostgresDatabase.dbInit", "User has permission to create tables");
+            } catch (err) {
+                canCreateTables = false;
+                out.log("WARN", "PostgresDatabase.dbInit", "User does not have permission to create tables: " + err.message);
+                out.log("WARN", "PostgresDatabase.dbInit", "Will attempt to use existing tables if they exist");
+            }
 
-            // Create Groups table if not exists
-            await client.query(`
-                CREATE TABLE IF NOT EXISTS "Groups" (
-                    id VARCHAR(255) PRIMARY KEY,
-                    "displayName" VARCHAR(255) UNIQUE
-                )
+            // Check if tables exist regardless of permissions
+            const tableCheck = await client.query(`
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name IN ('Users', 'Groups', 'GroupMemberships')
             `);
+            
+            const existingTables = tableCheck.rows.map(row => row.table_name);
+            out.log("INFO", "PostgresDatabase.dbInit", `Found existing tables: ${existingTables.join(', ') || 'none'}`);
+            
+            // If we have all required tables, we can proceed
+            if (existingTables.length === 3) {
+                out.log("INFO", "PostgresDatabase.dbInit", "All required tables exist, skipping table creation");
+            } else if (!canCreateTables) {
+                // We don't have all tables and can't create them
+                throw new Error("Missing required tables and don't have permission to create them. Please contact your database administrator.");
+            } else {
+                // Create tables if we have permission and tables don't exist
+                // Create Users table if not exists
+                if (!existingTables.includes('Users')) {
+                    await client.query(`
+                        CREATE TABLE IF NOT EXISTS "Users" (
+                            id VARCHAR(255) PRIMARY KEY,
+                            active BOOLEAN,
+                            "userName" VARCHAR(255) UNIQUE,
+                            "givenName" VARCHAR(255),
+                            "middleName" VARCHAR(255),
+                            "familyName" VARCHAR(255),
+                            email VARCHAR(255)
+                        )
+                    `);
+                    out.log("INFO", "PostgresDatabase.dbInit", "Created Users table");
+                }
 
-            // Create GroupMemberships table if not exists
-            await client.query(`
-                CREATE TABLE IF NOT EXISTS "GroupMemberships" (
-                    id VARCHAR(255) PRIMARY KEY,
-                    "groupId" VARCHAR(255) REFERENCES "Groups"(id) ON DELETE CASCADE,
-                    "userId" VARCHAR(255) REFERENCES "Users"(id) ON DELETE CASCADE,
-                    UNIQUE("groupId", "userId")
-                )
-            `);
+                // Create Groups table if not exists
+                if (!existingTables.includes('Groups')) {
+                    await client.query(`
+                        CREATE TABLE IF NOT EXISTS "Groups" (
+                            id VARCHAR(255) PRIMARY KEY,
+                            "displayName" VARCHAR(255) UNIQUE
+                        )
+                    `);
+                    out.log("INFO", "PostgresDatabase.dbInit", "Created Groups table");
+                }
+
+                // Create GroupMemberships table if not exists
+                if (!existingTables.includes('GroupMemberships')) {
+                    await client.query(`
+                        CREATE TABLE IF NOT EXISTS "GroupMemberships" (
+                            id VARCHAR(255) PRIMARY KEY,
+                            "groupId" VARCHAR(255) REFERENCES "Groups"(id) ON DELETE CASCADE,
+                            "userId" VARCHAR(255) REFERENCES "Users"(id) ON DELETE CASCADE,
+                            UNIQUE("groupId", "userId")
+                        )
+                    `);
+                    out.log("INFO", "PostgresDatabase.dbInit", "Created GroupMemberships table");
+                }
+            }
 
             // Check if we need to add sample data
             const userCount = await client.query('SELECT COUNT(*) FROM "Users"');
             
             if (parseInt(userCount.rows[0].count) === 0) {
+                out.log("INFO", "PostgresDatabase.dbInit", "No users found, adding sample data");
+                
                 // Insert sample data
                 const user1Id = uuid.v4();
                 const user2Id = uuid.v4();
@@ -120,6 +166,8 @@ class PostgresDatabase {
                 `, [uuid.v4(), group2Id, user2Id]);
 
                 out.log("INFO", "PostgresDatabase.dbInit", "PostgreSQL database initialized with sample data");
+            } else {
+                out.log("INFO", "PostgresDatabase.dbInit", `Database contains ${userCount.rows[0].count} users, skipping sample data`);
             }
 
             // Commit transaction
@@ -155,6 +203,67 @@ class PostgresDatabase {
             callback(scimCore.createSCIMUserList(result.rows, startIndex, result.rows.length, reqUrl));
         } catch (err) {
             out.error("PostgresDatabase.listUsers", err);
+            callback(scimCore.createSCIMError(err.message, "500"));
+        }
+    }
+
+    static async getFilteredUsers(filterAttribute, filterValue, startIndex, count, reqUrl, callback) {
+        try {
+            let query;
+            let queryParams;
+            
+            // Remove quotes if present in the filter value
+            if (filterValue.startsWith('"') && filterValue.endsWith('"')) {
+                filterValue = filterValue.substring(1, filterValue.length - 1);
+            }
+            
+            // Map filter attribute to the database column
+            let dbColumn;
+            switch (filterAttribute) {
+                case 'userName':
+                    dbColumn = '"userName"';
+                    break;
+                case 'id':
+                    dbColumn = 'id';
+                    break;
+                case 'email':
+                    dbColumn = 'email';
+                    break;
+                case 'givenName':
+                    dbColumn = '"givenName"';
+                    break;
+                case 'familyName':
+                    dbColumn = '"familyName"';
+                    break;
+                default:
+                    callback(scimCore.createSCIMError(`Unsupported filter attribute: ${filterAttribute}`, "400"));
+                    return;
+            }
+            
+            // Construct the query with proper parameterization to prevent SQL injection
+            query = `SELECT * FROM "Users" WHERE ${dbColumn} = $1 ORDER BY "userName" LIMIT $2 OFFSET $3`;
+            queryParams = [filterValue, count, startIndex - 1];
+            
+            out.log("DEBUG", "PostgresDatabase.getFilteredUsers", `Query: ${query}, Params: ${JSON.stringify(queryParams)}`);
+            
+            const result = await pool.query(query, queryParams);
+            
+            if (result.rows.length === 0) {
+                callback(scimCore.createSCIMError("No users found matching filter", "404"));
+                return;
+            }
+            
+            // Get group memberships for all users
+            const memberships = await this.getGroupMembershipsInternal();
+            
+            // Add groups to each user
+            for (let i = 0; i < result.rows.length; i++) {
+                result.rows[i].groups = this.getGroupsForUser(result.rows[i].id, memberships);
+            }
+            
+            callback(scimCore.createSCIMUserList(result.rows, startIndex, result.rows.length, reqUrl));
+        } catch (err) {
+            out.error("PostgresDatabase.getFilteredUsers", err);
             callback(scimCore.createSCIMError(err.message, "500"));
         }
     }
@@ -434,6 +543,58 @@ class PostgresDatabase {
             callback(scimCore.createSCIMGroupList(result.rows, startIndex, result.rows.length, reqUrl));
         } catch (err) {
             out.error("PostgresDatabase.listGroups", err);
+            callback(scimCore.createSCIMError(err.message, "500"));
+        }
+    }
+
+    static async getFilteredGroups(filterAttribute, filterValue, startIndex, count, reqUrl, callback) {
+        try {
+            let query;
+            let queryParams;
+            
+            // Remove quotes if present in the filter value
+            if (filterValue.startsWith('"') && filterValue.endsWith('"')) {
+                filterValue = filterValue.substring(1, filterValue.length - 1);
+            }
+            
+            // Map filter attribute to the database column
+            let dbColumn;
+            switch (filterAttribute) {
+                case 'displayName':
+                    dbColumn = '"displayName"';
+                    break;
+                case 'id':
+                    dbColumn = 'id';
+                    break;
+                default:
+                    callback(scimCore.createSCIMError(`Unsupported filter attribute: ${filterAttribute}`, "400"));
+                    return;
+            }
+            
+            // Construct the query with proper parameterization to prevent SQL injection
+            query = `SELECT * FROM "Groups" WHERE ${dbColumn} = $1 ORDER BY "displayName" LIMIT $2 OFFSET $3`;
+            queryParams = [filterValue, count, startIndex - 1];
+            
+            out.log("DEBUG", "PostgresDatabase.getFilteredGroups", `Query: ${query}, Params: ${JSON.stringify(queryParams)}`);
+            
+            const result = await pool.query(query, queryParams);
+            
+            if (result.rows.length === 0) {
+                callback(scimCore.createSCIMError("No groups found matching filter", "404"));
+                return;
+            }
+            
+            // Get group memberships for all groups
+            const memberships = await this.getGroupMembershipsInternal();
+            
+            // Add members to each group
+            for (let i = 0; i < result.rows.length; i++) {
+                result.rows[i].members = this.getUsersForGroup(result.rows[i].id, memberships);
+            }
+            
+            callback(scimCore.createSCIMGroupList(result.rows, startIndex, result.rows.length, reqUrl));
+        } catch (err) {
+            out.error("PostgresDatabase.getFilteredGroups", err);
             callback(scimCore.createSCIMError(err.message, "500"));
         }
     }
