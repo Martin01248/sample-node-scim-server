@@ -222,6 +222,39 @@ The tests verify:
 
 # Storage Options
 
+## PostgreSQL Database
+The server now supports PostgreSQL database integration for persistent storage:
+- Stores all data in a PostgreSQL database
+- Provides robust data persistence and relational integrity
+- Uses connection pooling for efficient database connections
+- Supports comprehensive SCIM operations for users and groups
+- Handles transactions properly for data consistency
+
+### Setting Up PostgreSQL
+1. Install PostgreSQL on your system or use a cloud-based PostgreSQL service
+2. Create a new database for the SCIM server: `createdb scimdb`
+3. Configure your connection in the `.env` file:
+   ```
+   DATABASE_URL=postgresql://username:password@hostname:port/database
+   ```
+4. The database schema will be automatically created when the server starts
+
+### Local Development
+For local development:
+- Install PostgreSQL locally
+- Update the `.env` file with your local PostgreSQL credentials
+- Run the server: `node SCIMServer.js`
+- Tables will be created automatically on first run
+
+### Heroku Deployment
+For Heroku deployment:
+1. Add the PostgreSQL add-on:
+   ```bash
+   heroku addons:create heroku-postgresql:hobby-dev
+   ```
+2. The `DATABASE_URL` will be automatically set by Heroku
+3. Deploy your app as usual
+
 ## File-Based Storage
 The server now uses a file-based JSON storage system by default. This approach:
 - Stores all data in a `data/db.json` file

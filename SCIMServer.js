@@ -13,11 +13,14 @@
  *  limitations under the License.
  */
 
+// Load environment variables from .env file
+require('dotenv').config();
+
 let express = require('express');
 let app = express();
 let bodyParser = require('body-parser');
-// Use the file-based database
-let db = require('./core/MockDatabase');
+// Database factory will select the appropriate database implementation
+let dbFactory = require('./core/DatabaseFactory');
 let out = require('./core/Logs');
 let cUsers = require('./components/Users');
 let cGroups = require('./components/Groups');
@@ -43,8 +46,6 @@ app.use('/scim/v2', (req, res, next) => {
   
   next();
 });
-
-let port = process.env.PORT || 8081; // Support for Heroku
 
 /**
  * GET {{baseUrl}}/scim/v2/Users
@@ -126,12 +127,26 @@ app.get('/scim/v2', function (req, res) {
     res.send('SCIM');
 });
 
-let server = app.listen(port, async function () {
-    out.log("INFO", "ServerStartup", "Listening on port " + port);
+// Use the port from environment variables or default to 8080
+const port = process.env.PORT || 8080;
 
-    // Initialize the file database
-    await db.dbInit();
-});
+// Initialize database and start server
+(async function() {
+    try {
+        // Initialize database using the factory
+        out.log("INFO", "ServerStartup", "Initializing database");
+        const db = await dbFactory.initDatabase();
+        
+        // Start the server
+        let server = app.listen(port, function () {
+            out.log("INFO", "ServerStartup", "SCIM server listening on port " + port);
+            out.log("INFO", "ServerStartup", "Environment: " + (process.env.NODE_ENV || 'development'));
+        });
+    } catch (err) {
+        out.error("ServerStartup", "Failed to initialize database: " + err.message);
+        process.exit(1);
+    }
+})();
 
 // Export for testing
 module.exports = app;

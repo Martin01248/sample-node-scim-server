@@ -1,6 +1,6 @@
 let url = require('url');
 let scimCore = require('../core/SCIMCore');
-let db = require('../core/MockDatabase');
+let dbFactory = require('../core/DatabaseFactory');
 let user = require('../models/User');
 let out = require('../core/Logs');
 
@@ -15,6 +15,9 @@ class Users {
         let startIndex = query["startIndex"];
         let count = query["count"];
         let filter = query["filter"];
+
+        // Get database instance
+        const db = dbFactory.getDatabase();
 
         if (filter !== undefined) {
             let attributeName = String(filter.split("eq")[0]).trim();
@@ -67,6 +70,9 @@ class Users {
 
         let userId = req.params.userId;
 
+        // Get database instance
+        const db = dbFactory.getDatabase();
+
         db.getUser(userId, reqUrl, function (result) {
             if (result["status"] !== undefined) {
                 if (result["status"] === "400") {
@@ -93,6 +99,9 @@ class Users {
         let urlParts = url.parse(req.url, true);
         let reqUrl = urlParts.pathname;
         let requestBody = "";
+
+        // Get database instance
+        const db = dbFactory.getDatabase();
 
         req.on('data', function (data) {
             try {
@@ -175,6 +184,9 @@ class Users {
         let userId = req.params.userId;
 
         let requestBody = "";
+
+        // Get database instance
+        const db = dbFactory.getDatabase();
 
         req.on("data", function (data) {
             try {
@@ -290,6 +302,9 @@ class Users {
 
         let requestBody = "";
 
+        // Get database instance
+        const db = dbFactory.getDatabase();
+
         req.on("data", function (data) {
             requestBody += data;
             let userJsonData = JSON.parse(requestBody);
@@ -323,6 +338,9 @@ class Users {
         out.log("INFO", "Users.deleteUser", "Got request: " + req.url);
 
         let userId = req.params.userId;
+
+        // Get database instance
+        const db = dbFactory.getDatabase();
 
         db.deleteUser(userId, function(result) {
             if (result && result["status"] !== undefined) {

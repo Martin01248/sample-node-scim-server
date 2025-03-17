@@ -1,6 +1,6 @@
 let url = require('url');
 let scimCore = require('../core/SCIMCore');
-let db = require('../core/MockDatabase');
+let dbFactory = require('../core/DatabaseFactory');
 let group = require('../models/Group');
 let out = require('../core/Logs');
 
@@ -15,6 +15,9 @@ class Groups {
         let startIndex = query["startIndex"];
         let count = query["count"];
         let filter = query["filter"];
+
+        // Get database instance
+        const db = dbFactory.getDatabase();
 
         if (filter !== undefined) {
             let attributeName = String(filter.split("eq")[0]).trim();
@@ -67,6 +70,9 @@ class Groups {
 
         let groupId = req.params.groupId;
 
+        // Get database instance
+        const db = dbFactory.getDatabase();
+
         db.getGroup(groupId, reqUrl, function (result) {
             if (result["status"] !== undefined) {
                 if (result["status"] === "400") {
@@ -93,6 +99,9 @@ class Groups {
         let urlParts = url.parse(req.url, true);
         let reqUrl = urlParts.pathname;
         let requestBody = "";
+
+        // Get database instance
+        const db = dbFactory.getDatabase();
 
         req.on('data', function (data) {
             try {
@@ -164,6 +173,9 @@ class Groups {
         let groupId = req.params.groupId;
 
         let requestBody = "";
+
+        // Get database instance
+        const db = dbFactory.getDatabase();
 
         req.on("data", function (data) {
             try {
@@ -279,6 +291,9 @@ class Groups {
 
         let requestBody = "";
 
+        // Get database instance
+        const db = dbFactory.getDatabase();
+
         req.on("data", function (data) {
             requestBody += data;
             let groupJsonData = JSON.parse(requestBody);
@@ -312,6 +327,9 @@ class Groups {
         out.log("INFO", "Groups.deleteGroup", "Got request: " + req.url);
 
         let groupId = req.params.groupId;
+
+        // Get database instance
+        const db = dbFactory.getDatabase();
 
         db.deleteGroup(groupId, function(result) {
             if (result && result["status"] !== undefined) {

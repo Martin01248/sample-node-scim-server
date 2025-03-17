@@ -14,7 +14,7 @@
  */
 
 let uuid = require('uuid');
-let db = require('./MockDatabase');
+// No direct database dependency needed here
 
 class SCIMCore {
     static createSCIMUserList(rows, startIndex, count, reqUrl) {
