@@ -828,122 +828,206 @@ class PostgresDatabase {
     }
 
     static async patchGroup(operations, groupId, reqUrl, callback) {
-        const client = await pool.connect();
-        try {
-            // Begin transaction
-            await client.query('BEGIN');
-            
-            // Check if group exists
-            const existingGroup = await client.query('SELECT * FROM "Groups" WHERE id = $1', [groupId]);
-            
-            if (existingGroup.rows.length === 0) {
-                callback(scimCore.createSCIMError("Group not found", "404"));
-                await client.query('ROLLBACK');
-                return;
+        const safeCallback = this._safeCallback(callback);
+        
+        out.log("DEBUG", "PostgresDatabase.patchGroup", `Patching group ${groupId} with operations: ${JSON.stringify(operations)}`);
+        
+        // First check if the group exists
+        this.pool.query('SELECT * FROM groups WHERE id = $1', [groupId], (err, result) => {
+            if (err) {
+                out.log("ERROR", "PostgresDatabase.patchGroup", `Error checking group existence: ${err.message}`);
+                return safeCallback(scimCore.createSCIMError("Database error", "500", err.message));
             }
             
-            // Create a copy of the existing group
-            const group = { ...existingGroup.rows[0] };
+            if (result.rows.length === 0) {
+                out.log("WARN", "PostgresDatabase.patchGroup", `Group ${groupId} not found`);
+                return safeCallback(scimCore.createSCIMError("Group not found", "404"));
+            }
             
-            // Get current members
-            const memberships = await this.getGroupMembershipsInternal();
-            group.members = this.getUsersForGroup(groupId, memberships);
+            const group = result.rows[0];
+            out.log("DEBUG", "PostgresDatabase.patchGroup", `Found group: ${JSON.stringify(group)}`);
             
-            // Apply operations
-            for (const operation of operations) {
-                const op = operation.op.toLowerCase();
+            let operationsArray = [];
+            
+            // Handle different operation formats (Operations vs operations)
+            if (operations.Operations && Array.isArray(operations.Operations)) {
+                operationsArray = operations.Operations;
+            } else if (operations.operations && Array.isArray(operations.operations)) {
+                operationsArray = operations.operations;
+            } else if (operations.op) {
+                // Single operation
+                operationsArray = [operations];
+            } else {
+                out.log("ERROR", "PostgresDatabase.patchGroup", "Invalid operations format");
+                return safeCallback(scimCore.createSCIMError("Invalid operations format", "400"));
+            }
+            
+            out.log("DEBUG", "PostgresDatabase.patchGroup", `Processing operations: ${JSON.stringify(operationsArray)}`);
+            
+            // Begin database transaction
+            this.pool.query('BEGIN', (err) => {
+                if (err) {
+                    out.log("ERROR", "PostgresDatabase.patchGroup", `Error beginning transaction: ${err.message}`);
+                    return safeCallback(scimCore.createSCIMError("Database error", "500", err.message));
+                }
                 
-                if (op === "replace" && operation.path === "displayName") {
-                    group.displayName = operation.value;
-                } else if (op === "add" && operation.path === "members") {
-                    // Add new members
-                    const newMembers = Array.isArray(operation.value) ? operation.value : [operation.value];
-                    
-                    for (const member of newMembers) {
-                        const userId = member.value;
-                        // Verify user exists
-                        const userCheck = await client.query('SELECT * FROM "Users" WHERE id = $1', [userId]);
+                // Process each operation
+                let updatedGroup = { ...group };
+                let queries = [];
+                
+                try {
+                    for (const operation of operationsArray) {
+                        const op = operation.op ? operation.op.toLowerCase() : '';
                         
-                        if (userCheck.rows.length === 0) {
-                            await client.query('ROLLBACK');
-                            callback(scimCore.createSCIMError(`User with id ${userId} not found`, "400"));
+                        if (op === 'replace' || op === 'add') {
+                            if (operation.value) {
+                                // Direct value update (e.g., { "displayName": "New Name" })
+                                if (typeof operation.value === 'object') {
+                                    Object.keys(operation.value).forEach(key => {
+                                        // Map SCIM attributes to database columns
+                                        const dbColumn = this._mapAttributeToColumn(key);
+                                        if (dbColumn) {
+                                            updatedGroup[dbColumn] = operation.value[key];
+                                            queries.push({
+                                                text: `UPDATE groups SET ${dbColumn} = $1 WHERE id = $2`,
+                                                values: [operation.value[key], groupId]
+                                            });
+                                        }
+                                    });
+                                }
+                            } else if (operation.path && operation.value !== undefined) {
+                                // Path/value format (e.g., { "path": "displayName", "value": "New Name" })
+                                const path = operation.path.replace(/^members/, 'members');
+                                
+                                if (path === 'displayName') {
+                                    updatedGroup.display_name = operation.value;
+                                    queries.push({
+                                        text: 'UPDATE groups SET display_name = $1 WHERE id = $2',
+                                        values: [operation.value, groupId]
+                                    });
+                                } else if (path === 'members') {
+                                    // Handle membership updates
+                                    if (Array.isArray(operation.value)) {
+                                        // Add new members
+                                        for (const member of operation.value) {
+                                            if (member.value) {
+                                                queries.push({
+                                                    text: 'INSERT INTO group_memberships (group_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                                                    values: [groupId, member.value]
+                                                });
+                                            }
+                                        }
+                                    } else if (typeof operation.value === 'string') {
+                                        // Add single member by ID
+                                        queries.push({
+                                            text: 'INSERT INTO group_memberships (group_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                                            values: [groupId, operation.value]
+                                        });
+                                    }
+                                }
+                            }
+                        } else if (op === 'remove') {
+                            if (operation.path) {
+                                const path = operation.path.replace(/^members/, 'members');
+                                
+                                if (path.startsWith('members[value eq ')) {
+                                    // Extract user ID from path like "members[value eq \"123\"]"
+                                    const match = path.match(/members\[value eq ["'](.+)["']\]/);
+                                    if (match && match[1]) {
+                                        const userId = match[1];
+                                        queries.push({
+                                            text: 'DELETE FROM group_memberships WHERE group_id = $1 AND user_id = $2',
+                                            values: [groupId, userId]
+                                        });
+                                    }
+                                } else if (path === 'members') {
+                                    // Remove all members
+                                    queries.push({
+                                        text: 'DELETE FROM group_memberships WHERE group_id = $1',
+                                        values: [groupId]
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Execute all queries in sequence
+                    const executeQueries = (index) => {
+                        if (index >= queries.length) {
+                            // All queries completed, commit the transaction
+                            this.pool.query('COMMIT', (err) => {
+                                if (err) {
+                                    out.log("ERROR", "PostgresDatabase.patchGroup", `Error committing transaction: ${err.message}`);
+                                    this.pool.query('ROLLBACK', () => {
+                                        return safeCallback(scimCore.createSCIMError("Database error", "500", err.message));
+                                    });
+                                    return;
+                                }
+                                
+                                // Get the updated group with memberships
+                                this.getGroup(groupId, reqUrl, (result) => {
+                                    out.log("INFO", "PostgresDatabase.patchGroup", `Group ${groupId} updated successfully`);
+                                    safeCallback(result);
+                                });
+                            });
                             return;
                         }
                         
-                        // Check if membership already exists
-                        const membershipCheck = await client.query(
-                            'SELECT * FROM "GroupMemberships" WHERE "groupId" = $1 AND "userId" = $2', 
-                            [groupId, userId]
-                        );
+                        // Execute the current query
+                        const query = queries[index];
+                        out.log("DEBUG", "PostgresDatabase.patchGroup", `Executing query: ${query.text} with values: ${JSON.stringify(query.values)}`);
                         
-                        if (membershipCheck.rows.length === 0) {
-                            // Create membership if it doesn't exist
-                            await client.query(`
-                                INSERT INTO "GroupMemberships" (id, "groupId", "userId")
-                                VALUES ($1, $2, $3)
-                            `, [uuid.v4(), groupId, userId]);
-                        }
-                    }
-                } else if (op === "remove" && operation.path === "members") {
-                    // Remove members
-                    const membersToRemove = Array.isArray(operation.value) ? operation.value : [operation.value];
+                        this.pool.query(query.text, query.values, (err) => {
+                            if (err) {
+                                out.log("ERROR", "PostgresDatabase.patchGroup", `Error executing query: ${err.message}`);
+                                this.pool.query('ROLLBACK', () => {
+                                    return safeCallback(scimCore.createSCIMError("Database error", "500", err.message));
+                                });
+                                return;
+                            }
+                            
+                            // Move to the next query
+                            executeQueries(index + 1);
+                        });
+                    };
                     
-                    for (const member of membersToRemove) {
-                        const userId = member.value;
-                        // Delete membership
-                        await client.query(
-                            'DELETE FROM "GroupMemberships" WHERE "groupId" = $1 AND "userId" = $2', 
-                            [groupId, userId]
-                        );
+                    // Start executing queries
+                    if (queries.length > 0) {
+                        executeQueries(0);
+                    } else {
+                        // No changes needed, just commit and return the current group
+                        this.pool.query('COMMIT', (err) => {
+                            if (err) {
+                                out.log("ERROR", "PostgresDatabase.patchGroup", `Error committing transaction: ${err.message}`);
+                                this.pool.query('ROLLBACK', () => {
+                                    return safeCallback(scimCore.createSCIMError("Database error", "500", err.message));
+                                });
+                                return;
+                            }
+                            
+                            this.getGroup(groupId, reqUrl, (result) => {
+                                safeCallback(result);
+                            });
+                        });
                     }
+                } catch (error) {
+                    out.log("ERROR", "PostgresDatabase.patchGroup", `Error processing operations: ${error.message}`);
+                    this.pool.query('ROLLBACK', () => {
+                        return safeCallback(scimCore.createSCIMError("Error processing operations", "500", error.message));
+                    });
                 }
-            }
-            
-            // Update group name if changed
-            if (group.displayName !== existingGroup.rows[0].displayName) {
-                await client.query(`
-                    UPDATE "Groups"
-                    SET "displayName" = $1
-                    WHERE id = $2
-                `, [group.displayName, groupId]);
-            }
-            
-            // Commit transaction
-            await client.query('COMMIT');
-            
-            // Get updated group with members
-            const updatedGroup = await pool.query('SELECT * FROM "Groups" WHERE id = $1', [groupId]);
-            const updatedMemberships = await this.getGroupMembershipsInternal();
-            updatedGroup.rows[0].members = this.getUsersForGroup(groupId, updatedMemberships);
-            
-            callback(scimCore.parseSCIMGroup(updatedGroup.rows[0], reqUrl));
-        } catch (err) {
-            await client.query('ROLLBACK');
-            out.error("PostgresDatabase.patchGroup", err);
-            callback(scimCore.createSCIMError(err.message, "500"));
-        } finally {
-            client.release();
-        }
+            });
+        });
     }
-
-    static async deleteGroup(groupId, callback) {
-        try {
-            // Check if group exists
-            const existingGroup = await pool.query('SELECT * FROM "Groups" WHERE id = $1', [groupId]);
-            
-            if (existingGroup.rows.length === 0) {
-                callback(scimCore.createSCIMError("Group not found", "404"));
-                return;
-            }
-            
-            // Delete group (cascade will handle memberships)
-            await pool.query('DELETE FROM "Groups" WHERE id = $1', [groupId]);
-            
-            callback(null);
-        } catch (err) {
-            out.error("PostgresDatabase.deleteGroup", err);
-            callback(scimCore.createSCIMError(err.message, "500"));
-        }
+    
+    // Helper method to map SCIM attributes to database columns
+    _mapAttributeToColumn(attribute) {
+        const mapping = {
+            'displayName': 'display_name',
+            'externalId': 'external_id'
+        };
+        
+        return mapping[attribute] || attribute.toLowerCase().replace(/([A-Z])/g, '_$1').toLowerCase();
     }
 
     // Helper methods

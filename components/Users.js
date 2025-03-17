@@ -189,13 +189,16 @@ class Users {
         const db = dbFactory.getDatabase();
 
         req.on("data", function (data) {
+            requestBody += data;
+        });
+
+        req.on("end", function() {
             try {
-                requestBody += data;
                 let jsonReqBody;
                 
                 try {
                     jsonReqBody = JSON.parse(requestBody);
-                    out.logToFile(requestBody);
+                    out.log("DEBUG", "Users.patchUser", "Received JSON body: " + JSON.stringify(jsonReqBody));
                 } catch (jsonError) {
                     out.log("ERROR", "Users.patchUser", "Failed to parse request JSON: " + jsonError.message);
                     res.writeHead(400, {"Content-Type": "application/scim+json"});
@@ -204,78 +207,24 @@ class Users {
                     return;
                 }
                 
-                if (!jsonReqBody.Operations || !Array.isArray(jsonReqBody.Operations) || jsonReqBody.Operations.length === 0) {
-                    out.log("ERROR", "Users.patchUser", "Missing or invalid Operations array");
-                    res.writeHead(400, {"Content-Type": "application/scim+json"});
-                    let errorResponse = scimCore.createSCIMError("Missing or invalid Operations array", "400");
-                    res.end(JSON.stringify(errorResponse));
-                    return;
-                }
-
-                const operation = jsonReqBody.Operations[0].op ? jsonReqBody.Operations[0].op.toLowerCase() : '';
-                const value = jsonReqBody.Operations[0].value;
-                
-                // Handle different operation types (case-insensitive)
-                if (operation === "replace" || operation === "add") {
-                    if (!value) {
-                        out.log("ERROR", "Users.patchUser", "Missing value for operation: " + operation);
-                        res.writeHead(400, {"Content-Type": "application/scim+json"});
-                        let errorResponse = scimCore.createSCIMError("Missing value for operation", "400");
-                        res.end(JSON.stringify(errorResponse));
-                        return;
+                // Pass the operations to the database
+                db.patchUser(jsonReqBody, userId, reqUrl, function(result) {
+                    // Handle response
+                    if (result && result.schemas && result.schemas.includes("urn:ietf:params:scim:api:messages:2.0:Error")) {
+                        // Error response
+                        const statusCode = result.status || 500;
+                        res.writeHead(parseInt(statusCode), {"Content-Type": "application/scim+json"});
+                        out.log("ERROR", "Users.patchUser", `Error: ${result.detail || "Unknown error"}`);
+                    } else {
+                        // Success response
+                        res.writeHead(200, {"Content-Type": "application/scim+json"});
+                        out.log("INFO", "Users.patchUser", "User updated successfully");
                     }
                     
-                    const attribute = Object.keys(value)[0];
-                    const attributeValue = value[attribute];
-                    
-                    db.patchUser(attribute, attributeValue, userId, reqUrl, function (result) {
-                        if (result["status"] !== undefined) {
-                            if (result["status"] === "400") {
-                                res.writeHead(400, {"Content-Type": "application/scim+json"});
-                            } else if (result["status"] === "409") {
-                                res.writeHead(409, {"Content-Type": "application/scim+json"});
-                            } else if (result["status"] === "404") {
-                                res.writeHead(404, {"Content-Type": "application/scim+json"});
-                            }
-
-                            out.log("ERROR", "Users.patchUser", "Encountered error " + result["status"] + ": " + result["detail"]);
-                        } else {
-                            res.writeHead(200, {"Content-Type": "application/scim+json"});
-                        }
-
-                        let jsonResult = JSON.stringify(result);
-                        out.logToFile(jsonResult);
-
-                        res.end(jsonResult);
-                    });
-                } else if (operation === "remove") {
-                    // Handle remove operation
-                    out.log("WARN", "Users.patchUser", "Remove operation not fully implemented");
-                    
-                    // For now, just return success with the current user state
-                    db.getUser(userId, reqUrl, function (result) {
-                        if (result["status"] !== undefined) {
-                            res.writeHead(result["status"], {"Content-Type": "application/scim+json"});
-                            out.log("ERROR", "Users.patchUser", "Encountered error " + result["status"] + ": " + result["detail"]);
-                        } else {
-                            res.writeHead(200, {"Content-Type": "application/scim+json"});
-                        }
-                        
-                        let jsonResult = JSON.stringify(result);
-                        out.logToFile(jsonResult);
-                        res.end(jsonResult);
-                    });
-                } else {
-                    out.log("WARN", "Users.patchUser", "The requested operation, " + operation + ", is not supported!");
-
-                    let scimError = scimCore.createSCIMError("Operation Not Supported", "403");
-                    res.writeHead(403, {"Content-Type": "application/scim+json"});
-
-                    let jsonResult = JSON.stringify(scimError);
-                    out.logToFile(jsonResult);
-
-                    res.end(jsonResult);
-                }
+                    const responseJson = JSON.stringify(result);
+                    out.log("DEBUG", "Users.patchUser", "Sending response: " + responseJson);
+                    res.end(responseJson);
+                });
             } catch (error) {
                 out.log("ERROR", "Users.patchUser", "Unexpected error: " + error.message);
                 res.writeHead(500, {"Content-Type": "application/scim+json"});
@@ -283,7 +232,7 @@ class Users {
                 res.end(JSON.stringify(errorResponse));
             }
         });
-        
+
         req.on('error', function(error) {
             out.log("ERROR", "Users.patchUser", "Request error: " + error.message);
             res.writeHead(500, {"Content-Type": "application/scim+json"});
