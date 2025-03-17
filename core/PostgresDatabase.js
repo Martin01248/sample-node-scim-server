@@ -184,6 +184,9 @@ class PostgresDatabase {
 
     // Users CRUD operations
     static async listUsers(startIndex, count, reqUrl, callback) {
+        // Ensure callback is a function
+        if (!this._ensureCallback(callback, "listUsers")) return;
+        
         try {
             const result = await pool.query('SELECT * FROM "Users" ORDER BY "userName" LIMIT $1 OFFSET $2', [count, startIndex - 1]);
             
@@ -203,11 +206,16 @@ class PostgresDatabase {
             callback(scimCore.createSCIMUserList(result.rows, startIndex, result.rows.length, reqUrl));
         } catch (err) {
             out.error("PostgresDatabase.listUsers", err);
-            callback(scimCore.createSCIMError(err.message, "500"));
+            if (typeof callback === 'function') {
+                callback(scimCore.createSCIMError(err.message, "500"));
+            }
         }
     }
 
     static async getFilteredUsers(filterAttribute, filterValue, startIndex, count, reqUrl, callback) {
+        // Create a safe callback wrapper
+        const safeCallback = this._safeCallback(callback, "getFilteredUsers");
+        
         try {
             let query;
             let queryParams;
@@ -236,7 +244,7 @@ class PostgresDatabase {
                     dbColumn = '"familyName"';
                     break;
                 default:
-                    callback(scimCore.createSCIMError(`Unsupported filter attribute: ${filterAttribute}`, "400"));
+                    safeCallback(scimCore.createSCIMError(`Unsupported filter attribute: ${filterAttribute}`, "400"));
                     return;
             }
             
@@ -249,7 +257,7 @@ class PostgresDatabase {
             const result = await pool.query(query, queryParams);
             
             if (result.rows.length === 0) {
-                callback(scimCore.createSCIMError("No users found matching filter", "404"));
+                safeCallback(scimCore.createSCIMError("No users found matching filter", "404"));
                 return;
             }
             
@@ -261,10 +269,10 @@ class PostgresDatabase {
                 result.rows[i].groups = this.getGroupsForUser(result.rows[i].id, memberships);
             }
             
-            callback(scimCore.createSCIMUserList(result.rows, startIndex, result.rows.length, reqUrl));
+            safeCallback(scimCore.createSCIMUserList(result.rows, startIndex, result.rows.length, reqUrl));
         } catch (err) {
             out.error("PostgresDatabase.getFilteredUsers", err);
-            callback(scimCore.createSCIMError(err.message, "500"));
+            safeCallback(scimCore.createSCIMError(err.message, "500"));
         }
     }
 
@@ -439,6 +447,9 @@ class PostgresDatabase {
     }
 
     static async patchUser(operations, userId, reqUrl, callback) {
+        // Create a safe callback wrapper
+        const safeCallback = this._safeCallback(callback, "patchUser");
+        
         const client = await pool.connect();
         try {
             // Begin transaction
@@ -448,7 +459,7 @@ class PostgresDatabase {
             const existingUser = await client.query('SELECT * FROM "Users" WHERE id = $1', [userId]);
             
             if (existingUser.rows.length === 0) {
-                callback(scimCore.createSCIMError("User not found", "404"));
+                safeCallback(scimCore.createSCIMError("User not found", "404"));
                 await client.query('ROLLBACK');
                 return;
             }
@@ -456,26 +467,86 @@ class PostgresDatabase {
             // Create a copy of the existing user
             const user = { ...existingUser.rows[0] };
             
+            out.log("DEBUG", "PostgresDatabase.patchUser", `Received operations: ${JSON.stringify(operations)}`);
+            
+            // Handle both single operation and array of operations
+            const operationsArray = Array.isArray(operations) ? operations : [operations];
+            
             // Apply operations
-            for (const operation of operations) {
-                const op = operation.op.toLowerCase();
+            for (const operation of operationsArray) {
+                // Handle Microsoft Entra ID format which might send Operations inside an object
+                const op = operation.op ? operation.op.toLowerCase() : 
+                          (operation.Operations && operation.Operations[0] && operation.Operations[0].op) 
+                           ? operation.Operations[0].op.toLowerCase() : '';
+                
+                out.log("DEBUG", "PostgresDatabase.patchUser", `Processing operation: ${op}`);
                 
                 if (op === "replace") {
-                    if (operation.path === "active") {
-                        user.active = operation.value === "true" || operation.value === true;
-                    } else if (operation.path === "userName") {
-                        user.userName = operation.value;
-                    } else if (operation.path === "givenName") {
-                        user.givenName = operation.value;
-                    } else if (operation.path === "middleName") {
-                        user.middleName = operation.value;
-                    } else if (operation.path === "familyName") {
-                        user.familyName = operation.value;
-                    } else if (operation.path === "email") {
-                        user.email = operation.value;
+                    // Handle direct object with operations inside
+                    if (operation.Operations && operation.Operations.length > 0) {
+                        // Microsoft Entra ID format with nested Operations array
+                        for (const nestedOp of operation.Operations) {
+                            if (nestedOp.op && nestedOp.op.toLowerCase() === "replace") {
+                                if (nestedOp.value && typeof nestedOp.value === 'object') {
+                                    // Handle value as object (eg: {active: true})
+                                    Object.keys(nestedOp.value).forEach(key => {
+                                        const value = nestedOp.value[key];
+                                        if (key === "active") {
+                                            user.active = value === "true" || value === true;
+                                        } else if (key === "userName" || key === "username") {
+                                            user.userName = value;
+                                        } else if (key === "givenName" || key === "givenname") {
+                                            user.givenName = value;
+                                        } else if (key === "middleName" || key === "middlename") {
+                                            user.middleName = value;
+                                        } else if (key === "familyName" || key === "familyname") {
+                                            user.familyName = value;
+                                        } else if (key === "email") {
+                                            user.email = value;
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                    } else if (operation.value && typeof operation.value === 'object') {
+                        // Handle case where value is an object with attributes
+                        Object.keys(operation.value).forEach(key => {
+                            const value = operation.value[key];
+                            if (key === "active") {
+                                user.active = value === "true" || value === true;
+                            } else if (key === "userName" || key === "username") {
+                                user.userName = value;
+                            } else if (key === "givenName" || key === "givenname") {
+                                user.givenName = value;
+                            } else if (key === "middleName" || key === "middlename") {
+                                user.middleName = value;
+                            } else if (key === "familyName" || key === "familyname") {
+                                user.familyName = value;
+                            } else if (key === "email") {
+                                user.email = value;
+                            }
+                        });
+                    } else if (operation.path) {
+                        // Handle path-specific update
+                        const path = operation.path.toLowerCase();
+                        if (path === "active") {
+                            user.active = operation.value === "true" || operation.value === true;
+                        } else if (path === "username") {
+                            user.userName = operation.value;
+                        } else if (path === "givenname") {
+                            user.givenName = operation.value;
+                        } else if (path === "middlename") {
+                            user.middleName = operation.value;
+                        } else if (path === "familyname") {
+                            user.familyName = operation.value;
+                        } else if (path === "email") {
+                            user.email = operation.value;
+                        }
                     }
                 }
             }
+            
+            out.log("DEBUG", "PostgresDatabase.patchUser", `User after patch: ${JSON.stringify(user)}`);
             
             // Update user
             await client.query(`
@@ -492,11 +563,16 @@ class PostgresDatabase {
             const memberships = await this.getGroupMembershipsInternal();
             updatedUser.rows[0].groups = this.getGroupsForUser(userId, memberships);
             
-            callback(scimCore.parseSCIMUser(updatedUser.rows[0], reqUrl));
+            safeCallback(scimCore.parseSCIMUser(updatedUser.rows[0], reqUrl));
         } catch (err) {
-            await client.query('ROLLBACK');
+            try {
+                await client.query('ROLLBACK');
+            } catch (rollbackErr) {
+                out.error("PostgresDatabase.patchUser", "Error during rollback: " + rollbackErr.message);
+            }
+            
             out.error("PostgresDatabase.patchUser", err);
-            callback(scimCore.createSCIMError(err.message, "500"));
+            safeCallback(scimCore.createSCIMError(err.message, "500"));
         } finally {
             client.release();
         }
@@ -938,6 +1014,30 @@ class PostgresDatabase {
         }
         
         return groupUsers;
+    }
+
+    // Helper function to validate callbacks
+    static _ensureCallback(callbackFn, methodName) {
+        if (typeof callbackFn !== 'function') {
+            out.error(`PostgresDatabase.${methodName}`, "Callback is not a function");
+            return false;
+        }
+        return true;
+    }
+
+    // Helper function to create a safe callback wrapper
+    static _safeCallback(callback, methodName) {
+        return (...args) => {
+            if (typeof callback === 'function') {
+                try {
+                    callback(...args);
+                } catch (err) {
+                    out.error(`PostgresDatabase.${methodName}.callback`, err);
+                }
+            } else {
+                out.error(`PostgresDatabase.${methodName}`, "Callback is not a function");
+            }
+        };
     }
 }
 
