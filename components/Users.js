@@ -65,6 +65,7 @@ class Users {
 
     static getUser(req, res) {
         out.log("INFO", "Users.getUser", "Got request: " + req.url);
+        this.logAuthHeaders(req, "Users.getUser");
 
         let reqUrl = req.url;
 
@@ -95,6 +96,7 @@ class Users {
 
     static createUser(req, res) {
         out.log("INFO", "Users.createUser", "Got request: " + req.url);
+        this.logAuthHeaders(req, "Users.createUser");
 
         let urlParts = url.parse(req.url, true);
         let reqUrl = urlParts.pathname;
@@ -309,6 +311,33 @@ class Users {
                 res.end();
             }
         });
+    }
+
+    static logAuthHeaders(req, action) {
+        const auth = req.headers.authorization || 'No authorization provided';
+        out.log("INFO", action, `With authorization: ${req.url}, Auth: ${auth}`);
+
+        const apiToken = req.headers['x-api-token'] || 'No token provided';
+        out.log("INFO", action, `With API token: ${req.url}, Auth: ${apiToken}`);
+
+        this.logRequestHeaders(req, action);
+    }
+
+    static logRequestHeaders(req, action) {
+        const headers = req.headers;
+        const headerLog = [];
+        
+        for (const [key, value] of Object.entries(headers)) {
+            // Mask sensitive headers like authorization
+            if (key.toLowerCase() === 'authorization' || key.toLowerCase().includes('token')) {
+                const maskedValue = value.slice(-4).padStart(value.length, '*');
+                headerLog.push(`${key}: ${maskedValue}`);
+            } else {
+                headerLog.push(`${key}: ${value}`);
+            }
+        }
+        
+        out.log("INFO", action, headerLog.join('\n'));
     }
 }
 
