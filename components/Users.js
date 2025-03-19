@@ -65,7 +65,7 @@ class Users {
 
     static getUser(req, res) {
         out.log("INFO", "Users.getUser", "Got request: " + req.url);
-        this.logAuthHeaders(req, "Users.getUser");
+        Users.logAuthHeaders(req, "Users.getUser");
 
         let reqUrl = req.url;
 
@@ -96,7 +96,7 @@ class Users {
 
     static createUser(req, res) {
         out.log("INFO", "Users.createUser", "Got request: " + req.url);
-        this.logAuthHeaders(req, "Users.createUser");
+        Users.logAuthHeaders(req, "Users.createUser");
 
         let urlParts = url.parse(req.url, true);
         let reqUrl = urlParts.pathname;
@@ -320,7 +320,7 @@ class Users {
         const apiToken = req.headers['x-api-token'] || 'No token provided';
         out.log("INFO", action, `With API token: ${req.url}, Auth: ${apiToken}`);
 
-        this.logRequestHeaders(req, action);
+        Users.logRequestHeaders(req, action);
     }
 
     static logRequestHeaders(req, action) {
