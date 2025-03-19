@@ -7,6 +7,7 @@ let out = require('../core/Logs');
 class Users {
     static listUsers(req, res) {
         out.log("INFO", "Users.listUsers", "Got request: " + req.url);
+        Users.logAuthHeaders(req, "Users.listUsers");
 
         let urlParts = url.parse(req.url, true);
         let reqUrl = urlParts.pathname;
