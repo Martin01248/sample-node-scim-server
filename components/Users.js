@@ -316,12 +316,9 @@ class Users {
 
     static logAuthHeaders(req, action) {
         const auth = req.headers.authorization || 'No authorization provided';
-        out.log("INFO", action, `With authorization: ${req.url}, Auth: ${auth}`);
+        out.log("INFO", action, `req.url: ${req.url}, req.headers.authorization: ${auth}`);
 
-        const apiToken = req.headers['x-api-token'] || 'No token provided';
-        out.log("INFO", action, `With API token: ${req.url}, Auth: ${apiToken}`);
-
-        Users.logRequestHeaders(req, action);
+        //Users.logRequestHeaders(req, action);
     }
 
     static logRequestHeaders(req, action) {
