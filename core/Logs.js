@@ -4,10 +4,10 @@ let fl = require('./FileLogs');
 let fileLogs = new fl();
 
 class Logs {
-    static log(type, action, message) {
+    static log(level, action, message) {
         let timestamp = now.format("DD/MM/YYYY HH:mm:ss:SSS");
-        //let logEntry = "[ " + timestamp + " ] [ " + type + " ] [ " + action + " ] " + message;
-        let logEntry = "[ " + type + " ] [ " + action + " ] " + message;
+        //let logEntry = "[ " + timestamp + " ] [ " + level + " ] [ " + action + " ] " + message;
+        let logEntry = "[ level=" + level + " ] [ " + action + " ] " + message;
 
         console.log(logEntry);
         fileLogs.logToFile(logEntry + "\r\n");
