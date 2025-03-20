@@ -833,7 +833,7 @@ class PostgresDatabase {
         out.log("DEBUG", "PostgresDatabase.patchGroup", `Patching group ${groupId} with operations: ${JSON.stringify(operations)}`);
         
         // First check if the group exists
-        pool.query('SELECT * FROM groups WHERE id = $1', [groupId], (err, result) => {
+        pool.query('SELECT * FROM "Groups" WHERE id = $1', [groupId], (err, result) => {
             if (err) {
                 out.log("ERROR", "PostgresDatabase.patchGroup", `Error checking group existence: ${err.message}`);
                 return safeCallback(scimCore.createSCIMError("Database error", "500", err.message));
@@ -885,11 +885,11 @@ class PostgresDatabase {
                                 if (typeof operation.value === 'object') {
                                     Object.keys(operation.value).forEach(key => {
                                         // Map SCIM attributes to database columns
-                                        const dbColumn = this._mapAttributeToColumn(key);
+                                        const dbColumn = PostgresDatabase._mapAttributeToColumn(key);
                                         if (dbColumn) {
                                             updatedGroup[dbColumn] = operation.value[key];
                                             queries.push({
-                                                text: `UPDATE groups SET ${dbColumn} = $1 WHERE id = $2`,
+                                                text: `UPDATE "Groups" SET ${dbColumn} = $1 WHERE id = $2`,
                                                 values: [operation.value[key], groupId]
                                             });
                                         }
@@ -900,9 +900,9 @@ class PostgresDatabase {
                                 const path = operation.path.replace(/^members/, 'members');
                                 
                                 if (path === 'displayName') {
-                                    updatedGroup.display_name = operation.value;
+                                    updatedGroup.displayName = operation.value;
                                     queries.push({
-                                        text: 'UPDATE groups SET display_name = $1 WHERE id = $2',
+                                        text: 'UPDATE "Groups" SET "displayName" = $1 WHERE id = $2',
                                         values: [operation.value, groupId]
                                     });
                                 } else if (path === 'members') {
@@ -912,16 +912,16 @@ class PostgresDatabase {
                                         for (const member of operation.value) {
                                             if (member.value) {
                                                 queries.push({
-                                                    text: 'INSERT INTO group_memberships (group_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-                                                    values: [groupId, member.value]
+                                                    text: 'INSERT INTO "GroupMemberships" (id, "groupId", "userId") VALUES ($1, $2, $3) ON CONFLICT ("groupId", "userId") DO NOTHING',
+                                                    values: [uuid.v4(), groupId, member.value]
                                                 });
                                             }
                                         }
                                     } else if (typeof operation.value === 'string') {
                                         // Add single member by ID
                                         queries.push({
-                                            text: 'INSERT INTO group_memberships (group_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-                                            values: [groupId, operation.value]
+                                            text: 'INSERT INTO "GroupMemberships" (id, "groupId", "userId") VALUES ($1, $2, $3) ON CONFLICT ("groupId", "userId") DO NOTHING',
+                                            values: [uuid.v4(), groupId, operation.value]
                                         });
                                     }
                                 }
@@ -936,14 +936,14 @@ class PostgresDatabase {
                                     if (match && match[1]) {
                                         const userId = match[1];
                                         queries.push({
-                                            text: 'DELETE FROM group_memberships WHERE group_id = $1 AND user_id = $2',
+                                            text: 'DELETE FROM "GroupMemberships" WHERE "groupId" = $1 AND "userId" = $2',
                                             values: [groupId, userId]
                                         });
                                     }
                                 } else if (path === 'members') {
                                     // Remove all members
                                     queries.push({
-                                        text: 'DELETE FROM group_memberships WHERE group_id = $1',
+                                        text: 'DELETE FROM "GroupMemberships" WHERE "groupId" = $1',
                                         values: [groupId]
                                     });
                                 }
@@ -965,7 +965,7 @@ class PostgresDatabase {
                                 }
                                 
                                 // Get the updated group with memberships
-                                this.getGroup(groupId, reqUrl, (result) => {
+                                PostgresDatabase.getGroup(groupId, reqUrl, (result) => {
                                     out.log("INFO", "PostgresDatabase.patchGroup", `Group ${groupId} updated successfully`);
                                     safeCallback(result);
                                 });
@@ -1005,7 +1005,7 @@ class PostgresDatabase {
                                 return;
                             }
                             
-                            this.getGroup(groupId, reqUrl, (result) => {
+                            PostgresDatabase.getGroup(groupId, reqUrl, (result) => {
                                 safeCallback(result);
                             });
                         });
@@ -1021,7 +1021,7 @@ class PostgresDatabase {
     }
     
     // Helper method to map SCIM attributes to database columns
-    _mapAttributeToColumn(attribute) {
+    static _mapAttributeToColumn(attribute) {
         const mapping = {
             'displayName': 'display_name',
             'externalId': 'external_id'
