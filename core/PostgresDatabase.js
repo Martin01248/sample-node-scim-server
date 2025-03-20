@@ -220,6 +220,14 @@ class PostgresDatabase {
             let query;
             let queryParams;
             
+            // Set default values for pagination
+            const defaultCount = 10; // Default page size
+            const defaultStartIndex = 1;
+            
+            // Ensure startIndex and count are valid numbers
+            const validStartIndex = (typeof startIndex === 'number' && startIndex > 0) ? startIndex : defaultStartIndex;
+            const validCount = (typeof count === 'number' && count > 0) ? count : defaultCount;
+            
             // Remove quotes if present in the filter value
             if (filterValue.startsWith('"') && filterValue.endsWith('"')) {
                 filterValue = filterValue.substring(1, filterValue.length - 1);
@@ -250,7 +258,7 @@ class PostgresDatabase {
             
             // Construct the query with proper parameterization to prevent SQL injection
             query = `SELECT * FROM "Users" WHERE ${dbColumn} = $1 ORDER BY "userName" LIMIT $2 OFFSET $3`;
-            queryParams = [filterValue, count, startIndex - 1];
+            queryParams = [filterValue, validCount, validStartIndex - 1];
             
             out.log("DEBUG", "PostgresDatabase.getFilteredUsers", `Query: ${query}, Params: ${JSON.stringify(queryParams)}`);
             
@@ -269,7 +277,7 @@ class PostgresDatabase {
                 result.rows[i].groups = this.getGroupsForUser(result.rows[i].id, memberships);
             }
             
-            safeCallback(scimCore.createSCIMUserList(result.rows, startIndex, result.rows.length, reqUrl));
+            safeCallback(scimCore.createSCIMUserList(result.rows, validStartIndex, result.rows.length, reqUrl));
         } catch (err) {
             out.error("PostgresDatabase.getFilteredUsers", err);
             safeCallback(scimCore.createSCIMError(err.message, "500"));
