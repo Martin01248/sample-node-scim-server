@@ -38,7 +38,7 @@ app.use('/scim/v2', (req, res, next) => {
   const originalEnd = res.end;
   res.end = function(chunk, encoding) {
     const responseTime = Date.now() - start;
-    out.log("INFO", "SCIMServer", `${req.method} ${req.url} completed in ${responseTime}ms with status ${res.statusCode}`);
+    out.log("INFO", "SCIMServer", `Completed ${req.method} ${req.url} with status ${res.statusCode} in ${responseTime}ms `);
     
     // Call the original end method
     return originalEnd.call(this, chunk, encoding);

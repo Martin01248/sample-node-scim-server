@@ -134,7 +134,6 @@ class Users {
                 }
 
                 try {
-                    out.log("INFO", "Users.createUser", "Parsing user data");
                     let userModel = user.parseFromSCIMResource(userJsonData);
                     out.log("INFO", "Users.createUser", "Creating user: " + JSON.stringify(userModel));
                     
