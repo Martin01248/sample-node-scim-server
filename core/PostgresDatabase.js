@@ -833,7 +833,7 @@ class PostgresDatabase {
         out.log("DEBUG", "PostgresDatabase.patchGroup", `Patching group ${groupId} with operations: ${JSON.stringify(operations)}`);
         
         // First check if the group exists
-        this.pool.query('SELECT * FROM groups WHERE id = $1', [groupId], (err, result) => {
+        pool.query('SELECT * FROM groups WHERE id = $1', [groupId], (err, result) => {
             if (err) {
                 out.log("ERROR", "PostgresDatabase.patchGroup", `Error checking group existence: ${err.message}`);
                 return safeCallback(scimCore.createSCIMError("Database error", "500", err.message));
@@ -865,7 +865,7 @@ class PostgresDatabase {
             out.log("DEBUG", "PostgresDatabase.patchGroup", `Processing operations: ${JSON.stringify(operationsArray)}`);
             
             // Begin database transaction
-            this.pool.query('BEGIN', (err) => {
+            pool.query('BEGIN', (err) => {
                 if (err) {
                     out.log("ERROR", "PostgresDatabase.patchGroup", `Error beginning transaction: ${err.message}`);
                     return safeCallback(scimCore.createSCIMError("Database error", "500", err.message));
@@ -955,10 +955,10 @@ class PostgresDatabase {
                     const executeQueries = (index) => {
                         if (index >= queries.length) {
                             // All queries completed, commit the transaction
-                            this.pool.query('COMMIT', (err) => {
+                            pool.query('COMMIT', (err) => {
                                 if (err) {
                                     out.log("ERROR", "PostgresDatabase.patchGroup", `Error committing transaction: ${err.message}`);
-                                    this.pool.query('ROLLBACK', () => {
+                                    pool.query('ROLLBACK', () => {
                                         return safeCallback(scimCore.createSCIMError("Database error", "500", err.message));
                                     });
                                     return;
@@ -977,10 +977,10 @@ class PostgresDatabase {
                         const query = queries[index];
                         out.log("DEBUG", "PostgresDatabase.patchGroup", `Executing query: ${query.text} with values: ${JSON.stringify(query.values)}`);
                         
-                        this.pool.query(query.text, query.values, (err) => {
+                        pool.query(query.text, query.values, (err) => {
                             if (err) {
                                 out.log("ERROR", "PostgresDatabase.patchGroup", `Error executing query: ${err.message}`);
-                                this.pool.query('ROLLBACK', () => {
+                                pool.query('ROLLBACK', () => {
                                     return safeCallback(scimCore.createSCIMError("Database error", "500", err.message));
                                 });
                                 return;
@@ -996,10 +996,10 @@ class PostgresDatabase {
                         executeQueries(0);
                     } else {
                         // No changes needed, just commit and return the current group
-                        this.pool.query('COMMIT', (err) => {
+                        pool.query('COMMIT', (err) => {
                             if (err) {
                                 out.log("ERROR", "PostgresDatabase.patchGroup", `Error committing transaction: ${err.message}`);
-                                this.pool.query('ROLLBACK', () => {
+                                pool.query('ROLLBACK', () => {
                                     return safeCallback(scimCore.createSCIMError("Database error", "500", err.message));
                                 });
                                 return;
@@ -1012,7 +1012,7 @@ class PostgresDatabase {
                     }
                 } catch (error) {
                     out.log("ERROR", "PostgresDatabase.patchGroup", `Error processing operations: ${error.message}`);
-                    this.pool.query('ROLLBACK', () => {
+                    pool.query('ROLLBACK', () => {
                         return safeCallback(scimCore.createSCIMError("Error processing operations", "500", error.message));
                     });
                 }
