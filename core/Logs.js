@@ -6,7 +6,8 @@ let fileLogs = new fl();
 class Logs {
     static log(type, action, message) {
         let timestamp = now.format("DD/MM/YYYY HH:mm:ss:SSS");
-        let logEntry = "[ " + timestamp + " ] [ " + type + " ] [ " + action + " ] " + message;
+        //let logEntry = "[ " + timestamp + " ] [ " + type + " ] [ " + action + " ] " + message;
+        let logEntry = "[ " + type + " ] [ " + action + " ] " + message;
 
         console.log(logEntry);
         fileLogs.logToFile(logEntry + "\r\n");
