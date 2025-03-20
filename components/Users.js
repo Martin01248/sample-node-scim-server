@@ -316,7 +316,7 @@ class Users {
 
     static logAuthHeaders(req, action) {
         const auth = req.headers.authorization || 'No authorization provided';
-        out.log("INFO", action, `req.url: ${req.url}, req.headers.authorization: ${auth}`);
+        out.log("INFO", action, `request.headers.authorization: ${auth}`);
 
         //Users.logRequestHeaders(req, action);
     }
